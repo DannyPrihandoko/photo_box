@@ -1,14 +1,20 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
-import 'preview_screen.dart';
+import 'package:photo_box/session_complete_screen.dart';
+import 'package:photo_box/preview_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final CameraDescription camera;
+  final int totalTakes;
+  final String sessionId;
 
   const HomeScreen({
     super.key,
     required this.camera,
+    required this.totalTakes,
+    required this.sessionId,
   });
 
   @override
@@ -18,141 +24,211 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   late CameraController _controller;
   late Future<void> _initializeControllerFuture;
+  int _currentTake = 1;
+  final List<XFile> _takenImages = [];
+  String _message = "GET READY!";
+  int _countdown = 5;
+  Timer? _countdownTimer;
 
   @override
   void initState() {
     super.initState();
-    // Inisialisasi controller kamera
-    _controller = CameraController(
-      widget.camera,
-      ResolutionPreset.high, // Tentukan resolusi
-    );
-
-    // Inisialisasi future controller
-    _initializeControllerFuture = _controller.initialize();
+    _controller = CameraController(widget.camera, ResolutionPreset.high,
+        imageFormatGroup: ImageFormatGroup.yuv420);
+    _initializeControllerFuture = _controller.initialize().then((_) {
+      if (mounted) {
+        setState(() {});
+        _startSession();
+      }
+    });
   }
 
-  @override
-  void dispose() {
-    // Jangan lupa dispose controller saat widget tidak digunakan
-    _controller.dispose();
-    super.dispose();
+  void _startSession() {
+    Future.delayed(const Duration(seconds: 2), () {
+      if (mounted) _startCountdown();
+    });
   }
-  
+
+  void _startCountdown() {
+    setState(() {
+      _message = "SMILE!";
+      _countdown = 5;
+    });
+
+    _countdownTimer?.cancel();
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (_countdown > 0) {
+        setState(() {
+          _countdown--;
+        });
+      } else {
+        timer.cancel();
+        _takePicture();
+      }
+    });
+  }
+
   void _takePicture() async {
     try {
-      // Pastikan kamera sudah diinisialisasi
       await _initializeControllerFuture;
-
-      // Ambil gambar
       final image = await _controller.takePicture();
-
-      // Hentikan preview jika perlu (opsional)
-      // await _controller.pausePreview();
 
       if (!mounted) return;
 
-      // Navigasi ke PreviewScreen dengan membawa file gambar
-      await Navigator.of(context).push(
+      final result = await Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (context) => PreviewScreen(
-            imageFile: File(image.path),
-          ),
+          builder: (context) => PreviewScreen(imageFile: File(image.path)),
         ),
       );
-      
-      // Lanjutkan preview setelah kembali dari PreviewScreen (opsional)
-      // await _controller.resumePreview();
 
+      if (result == PreviewAction.retake) {
+        setState(() {
+          _message = "LET'S TRY AGAIN!";
+        });
+        Future.delayed(const Duration(seconds: 2), () {
+          if (mounted) _startCountdown();
+        });
+      } else {
+        _takenImages.add(image);
+        if (_currentTake < widget.totalTakes) {
+          setState(() {
+            _currentTake++;
+            _message = "NEXT PHOTO!";
+          });
+          Future.delayed(const Duration(seconds: 2), () {
+            if (mounted) _startCountdown();
+          });
+        } else {
+          if (!mounted) return;
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (context) => SessionCompleteScreen(
+                images: _takenImages,
+                sessionId: widget.sessionId,
+              ),
+            ),
+          );
+        }
+      }
     } catch (e) {
-      // Jika terjadi error, log di console
       debugPrint('Error taking picture: $e');
     }
   }
 
   @override
+  void dispose() {
+    _controller.dispose();
+    _countdownTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Azure Booth'),
-        centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.photo_library),
-            onPressed: () {
-              // Navigasi ke halaman galeri
-            },
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            child: Container(
-              margin: const EdgeInsets.all(20.0),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.2),
-                    spreadRadius: 2,
-                    blurRadius: 10,
-                    offset: const Offset(0, 5),
-                  ),
-                ],
-              ),
-              // Gunakan FutureBuilder untuk menampilkan loading saat kamera siap
-              child: FutureBuilder<void>(
-                future: _initializeControllerFuture,
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.done) {
-                    // Jika future selesai, tampilkan preview
-                    return ClipRRect(
-                      borderRadius: BorderRadius.circular(20.0),
-                      child: CameraPreview(_controller),
-                    );
-                  } else {
-                    // Jika masih loading, tampilkan indicator
-                    return const Center(child: CircularProgressIndicator());
-                  }
-                },
-              ),
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(vertical: 30.0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      body: FutureBuilder<void>(
+        future: _initializeControllerFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.done &&
+              _controller.value.isInitialized) {
+            return Stack(
+              alignment: Alignment.center,
               children: [
-                IconButton(
-                  icon: Icon(Icons.filter_vintage, color: Theme.of(context).primaryColor, size: 30),
-                  onPressed: () {},
-                ),
-                GestureDetector(
-                  onTap: _takePicture, // Panggil fungsi take picture
+                Center(
                   child: Container(
-                    padding: const EdgeInsets.all(4),
+                    width: MediaQuery.of(context).size.width * 0.7,
                     decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Theme.of(context).primaryColor, width: 4),
+                      color: const Color(0xFF9F86C0),
+                      borderRadius: BorderRadius.circular(40),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withAlpha(128),
+                          blurRadius: 20,
+                          spreadRadius: 5,
+                        ),
+                      ],
                     ),
-                    child: CircleAvatar(
-                      radius: 35,
-                      backgroundColor: Theme.of(context).colorScheme.secondary,
-                      child: const Icon(Icons.camera_alt, color: Colors.white, size: 35),
+                    padding: const EdgeInsets.all(12),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(30),
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          AspectRatio(
+                            aspectRatio: _controller.value.aspectRatio,
+                            child: CameraPreview(_controller),
+                          ),
+                          Container(
+                            color: Colors.black.withAlpha(77),
+                            child: Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    _message,
+                                    style: const TextStyle(
+                                      fontSize: 48,
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      shadows: [Shadow(blurRadius: 10)],
+                                    ),
+                                  ),
+                                  if (_countdown > 0 && _message == "SMILE!")
+                                    Text(
+                                      '$_countdown',
+                                      style: const TextStyle(
+                                        fontSize: 150,
+                                        color: Color(0xFF56CFE1),
+                                        fontWeight: FontWeight.bold,
+                                        shadows: [Shadow(blurRadius: 10)],
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
-                IconButton(
-                  icon: Icon(Icons.switch_camera, color: Theme.of(context).primaryColor, size: 30),
-                  onPressed: () {
-                    // Logika untuk ganti kamera (fitur selanjutnya)
-                  },
+                Positioned(
+                  top: 50,
+                  child: Column(
+                    children: [
+                      const Text(
+                        "LOOK HERE",
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold),
+                      ),
+                      Icon(
+                        Icons.arrow_downward,
+                        color: Colors.white.withAlpha(200),
+                        size: 30,
+                      )
+                    ],
+                  ),
+                ),
+                Positioned(
+                  bottom: 40,
+                  child: Text(
+                    "PHOTO $_currentTake / ${widget.totalTakes}",
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 2),
+                  ),
                 ),
               ],
-            ),
-          ),
-        ],
+            );
+          } else {
+            return const Center(
+                child:
+                    CircularProgressIndicator(color: Color(0xFF56CFE1)));
+          }
+        },
       ),
     );
   }

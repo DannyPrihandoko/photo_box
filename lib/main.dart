@@ -1,53 +1,57 @@
+import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
-import 'package:camera/camera.dart'; // Import package camera
-import 'home_screen.dart';
+import 'package:flutter/services.dart';
+import 'package:photo_box/welcome_screen.dart';
 
-// Ubah main menjadi async
 Future<void> main() async {
-  // Pastikan plugin sudah diinisialisasi
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Dapatkan daftar kamera yang tersedia
+  // Kunci orientasi ke lanskap
+  await SystemChrome.setPreferredOrientations([
+    DeviceOrientation.landscapeLeft,
+    DeviceOrientation.landscapeRight,
+  ]);
+
   final cameras = await availableCameras();
-
-  // Dapatkan kamera utama (biasanya kamera belakang)
-  final firstCamera = cameras.first;
-
-  runApp(MyApp(camera: firstCamera));
+  final frontCamera = cameras.firstWhere(
+    (camera) => camera.lensDirection == CameraLensDirection.front,
+    orElse: () => cameras.first,
+  );
+  runApp(MyApp(camera: frontCamera));
 }
 
 class MyApp extends StatelessWidget {
-  final CameraDescription camera; // Tambahkan properti kamera
-
+  final CameraDescription camera;
   const MyApp({super.key, required this.camera});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Azure Booth',
+      title: 'PhotoBox',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        // ... tema Anda tetap sama ...
-         primaryColor: const Color(0xFF006994), // Deep Ocean
-        scaffoldBackgroundColor: const Color(0xFFE0F7FA), // Light Seafoam
-        colorScheme: ColorScheme.fromSwatch().copyWith(
-          primary: const Color(0xFF006994),
-          secondary: const Color(0xFFFF8A80), // Coral Pink Accent
-        ),
+        fontFamily: 'Poppins',
+        scaffoldBackgroundColor: const Color(0xFF2C2A4A),
         appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFF006994),
+          backgroundColor: Colors.transparent,
           elevation: 0,
+          centerTitle: true,
           titleTextStyle: TextStyle(
-            color: Colors.white,
+            color: Color(0xFFF0F0F0),
             fontSize: 22,
             fontWeight: FontWeight.bold,
           ),
-          iconTheme: IconThemeData(color: Colors.white),
+          iconTheme: IconThemeData(color: Color(0xFFF0F0F0)),
         ),
-        fontFamily: 'Poppins',
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(30),
+            ),
+          ),
+        ),
       ),
-      // Kirim data kamera ke HomeScreen
-      home: HomeScreen(camera: camera),
+      home: WelcomeScreen(camera: camera),
     );
   }
 }
