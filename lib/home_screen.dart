@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:photo_box/main.dart'; // Import untuk warna
 import 'package:photo_box/session_complete_screen.dart';
 import 'package:photo_box/preview_screen.dart';
 
@@ -26,9 +27,10 @@ class _HomeScreenState extends State<HomeScreen> {
   late Future<void> _initializeControllerFuture;
   int _currentTake = 1;
   final List<XFile> _takenImages = [];
-  String _message = "GET READY!";
-  int _countdown = 5;
+  String _message = "SIAP-SIAP!";
+  int _countdown = 3;
   Timer? _countdownTimer;
+  bool _showGetReady = true;
 
   @override
   void initState() {
@@ -45,13 +47,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _startSession() {
     Future.delayed(const Duration(seconds: 2), () {
-      if (mounted) _startCountdown();
+      if (mounted) {
+        setState(() => _showGetReady = false);
+        _startCountdown();
+      }
     });
   }
 
   void _startCountdown() {
     setState(() {
-      _message = "SMILE!";
+      _message = "SENYUM!";
       _countdown = 5;
     });
 
@@ -83,20 +88,28 @@ class _HomeScreenState extends State<HomeScreen> {
 
       if (result == PreviewAction.retake) {
         setState(() {
-          _message = "LET'S TRY AGAIN!";
+          _message = "ULANGI LAGI!";
+          _showGetReady = true;
         });
-        Future.delayed(const Duration(seconds: 2), () {
-          if (mounted) _startCountdown();
+        Future.delayed(const Duration(seconds: 1), () {
+          if (mounted) {
+            setState(() => _showGetReady = false);
+            _startCountdown();
+          }
         });
       } else {
         _takenImages.add(image);
         if (_currentTake < widget.totalTakes) {
           setState(() {
             _currentTake++;
-            _message = "NEXT PHOTO!";
+            _message = "FOTO BERIKUTNYA!";
+            _showGetReady = true;
           });
-          Future.delayed(const Duration(seconds: 2), () {
-            if (mounted) _startCountdown();
+          Future.delayed(const Duration(seconds: 1), () {
+            if (mounted) {
+              setState(() => _showGetReady = false);
+              _startCountdown();
+            }
           });
         } else {
           if (!mounted) return;
@@ -124,7 +137,15 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final screenSize = MediaQuery.of(context).size;
+    final isPortrait = screenSize.height > screenSize.width;
+    final frameWidth =
+        isPortrait ? screenSize.width * 0.8 : screenSize.width * 0.5;
+    final frameHeight =
+        isPortrait ? screenSize.height * 0.5 : screenSize.height * 0.7;
+
     return Scaffold(
+      backgroundColor: backgroundDark,
       body: FutureBuilder<void>(
         future: _initializeControllerFuture,
         builder: (context, snapshot) {
@@ -135,55 +156,77 @@ class _HomeScreenState extends State<HomeScreen> {
               children: [
                 Center(
                   child: Container(
-                    width: MediaQuery.of(context).size.width * 0.7,
+                    width: frameWidth,
+                    height: frameHeight,
                     decoration: BoxDecoration(
-                      color: const Color(0xFF9F86C0),
-                      borderRadius: BorderRadius.circular(40),
+                      color: backgroundLight,
+                      borderRadius: BorderRadius.circular(isPortrait ? 30 : 40),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withAlpha(128),
-                          blurRadius: 20,
-                          spreadRadius: 5,
+                          color: Colors.black.withAlpha(50),
+                          blurRadius: 15,
+                          spreadRadius: 2,
                         ),
                       ],
                     ),
-                    padding: const EdgeInsets.all(12),
+                    padding: const EdgeInsets.all(10),
                     child: ClipRRect(
-                      borderRadius: BorderRadius.circular(30),
+                      borderRadius: BorderRadius.circular(isPortrait ? 22 : 32),
                       child: Stack(
                         alignment: Alignment.center,
                         children: [
-                          AspectRatio(
-                            aspectRatio: _controller.value.aspectRatio,
-                            child: CameraPreview(_controller),
+                          SizedBox(
+                            width: frameWidth - 20,
+                            height: frameHeight - 20,
+                            child: FittedBox(
+                              fit: BoxFit.cover,
+                              child: SizedBox(
+                                width: _controller.value.previewSize!.height,
+                                height: _controller.value.previewSize!.width,
+                                child: CameraPreview(_controller),
+                              ),
+                            ),
                           ),
                           Container(
-                            color: Colors.black.withAlpha(77),
+                            color: Colors.black.withAlpha(50),
                             child: Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Text(
-                                    _message,
-                                    style: const TextStyle(
-                                      fontSize: 48,
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.bold,
-                                      shadows: [Shadow(blurRadius: 10)],
-                                    ),
-                                  ),
-                                  if (_countdown > 0 && _message == "SMILE!")
-                                    Text(
-                                      '$_countdown',
-                                      style: const TextStyle(
-                                        fontSize: 150,
-                                        color: Color(0xFF56CFE1),
-                                        fontWeight: FontWeight.bold,
-                                        shadows: [Shadow(blurRadius: 10)],
-                                      ),
-                                    ),
-                                ],
-                              ),
+                              child: _showGetReady ||
+                                      (_countdown > 0 && _message == "SENYUM!")
+                                  ? Column(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Text(
+                                          _message,
+                                          textAlign: TextAlign.center,
+                                          style: TextStyle(
+                                            fontSize: isPortrait ? 36 : 48,
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                            shadows: const [
+                                              Shadow(
+                                                  blurRadius: 8,
+                                                  color: Colors.black54)
+                                            ],
+                                          ),
+                                        ),
+                                        if (!_showGetReady && _countdown > 0)
+                                          Text(
+                                            '$_countdown',
+                                            style: TextStyle(
+                                              fontSize: isPortrait ? 100 : 150,
+                                              color: primaryYellow,
+                                              fontWeight: FontWeight.bold,
+                                              shadows: const [
+                                                Shadow(
+                                                    blurRadius: 8,
+                                                    color: Colors.black54)
+                                              ],
+                                            ),
+                                          ),
+                                      ],
+                                    )
+                                  : const SizedBox.shrink(),
                             ),
                           ),
                         ],
@@ -192,31 +235,32 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
                 Positioned(
-                  top: 50,
-                  child: Column(
+                  top: isPortrait ? 40 : 50,
+                  left: 0,
+                  right: 0,
+                  child: const Column(
                     children: [
-                      const Text(
-                        "LOOK HERE",
+                      Text(
+                        "LIHAT KE KAMERA",
                         style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 24,
+                            color: textDark,
+                            fontSize: 18,
                             fontWeight: FontWeight.bold),
                       ),
-                      Icon(
-                        Icons.arrow_downward,
-                        color: Colors.white.withAlpha(200),
-                        size: 30,
-                      )
+                      Icon(Icons.arrow_downward, color: accentGrey, size: 24)
                     ],
                   ),
                 ),
                 Positioned(
-                  bottom: 40,
+                  bottom: isPortrait ? 30 : 40,
+                  left: 0,
+                  right: 0,
                   child: Text(
-                    "PHOTO $_currentTake / ${widget.totalTakes}",
+                    "FOTO $_currentTake / ${widget.totalTakes}",
+                    textAlign: TextAlign.center,
                     style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 24,
+                        color: textDark,
+                        fontSize: 20,
                         fontWeight: FontWeight.bold,
                         letterSpacing: 2),
                   ),
@@ -225,8 +269,7 @@ class _HomeScreenState extends State<HomeScreen> {
             );
           } else {
             return const Center(
-                child:
-                    CircularProgressIndicator(color: Color(0xFF56CFE1)));
+                child: CircularProgressIndicator(color: primaryYellow));
           }
         },
       ),

@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:photo_box/main.dart'; // Import untuk warna tema
 
 enum PreviewAction { retake, continuePhoto }
 
@@ -18,10 +19,11 @@ class _PreviewScreenState extends State<PreviewScreen>
   @override
   void initState() {
     super.initState();
-    _animationController = AnimationController(
-        vsync: this, duration: const Duration(seconds: 5))
-      ..forward();
+    _animationController =
+        AnimationController(vsync: this, duration: const Duration(seconds: 5))
+          ..forward(); // Animasi progress bar dimulai
     _animationController.addStatusListener((status) {
+      // Otomatis lanjut jika waktu habis
       if (status == AnimationStatus.completed && mounted) {
         Navigator.of(context).pop(PreviewAction.continuePhoto);
       }
@@ -37,52 +39,25 @@ class _PreviewScreenState extends State<PreviewScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: backgroundLight, // Latar belakang putih
       body: SafeArea(
         child: Column(
           children: [
+            // Progress bar di atas
             LinearProgressIndicator(
               value: _animationController.value,
-              backgroundColor: const Color(0xFF9F86C0),
+              backgroundColor: accentGrey.withAlpha(100), // Abu-abu transparan
               valueColor:
-                  const AlwaysStoppedAnimation<Color>(Color(0xFF56CFE1)),
+                  const AlwaysStoppedAnimation<Color>(primaryYellow), // Kuning
             ),
             Expanded(
-              child: Row(
-                children: [
-                  Expanded(
-                    flex: 3,
-                    child: Padding(
-                      padding: const EdgeInsets.all(30.0),
-                      child: ClipRRect(
-                          borderRadius: BorderRadius.circular(20),
-                          child: Image.file(widget.imageFile,
-                              fit: BoxFit.contain)),
-                    ),
-                  ),
-                  Expanded(
-                    flex: 2,
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Text("LOOKING GOOD!",
-                            style: TextStyle(
-                                fontSize: 32,
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 50),
-                        _buildActionButton(
-                            context, Icons.replay, 'RETAKE', () {
-                          Navigator.of(context).pop(PreviewAction.retake);
-                        }),
-                        const SizedBox(height: 30),
-                        _buildActionButton(
-                            context, Icons.check_circle, 'CONTINUE', () {
-                          Navigator.of(context).pop(PreviewAction.continuePhoto);
-                        }),
-                      ],
-                    ),
-                  )
-                ],
+              // Pilih layout berdasarkan orientasi
+              child: OrientationBuilder(
+                builder: (context, orientation) {
+                  return orientation == Orientation.portrait
+                      ? _buildPortraitLayout()
+                      : _buildLandscapeLayout();
+                },
               ),
             ),
           ],
@@ -91,17 +66,107 @@ class _PreviewScreenState extends State<PreviewScreen>
     );
   }
 
-  Widget _buildActionButton(
-      BuildContext context, IconData icon, String label, VoidCallback onPressed) {
-    return ElevatedButton.icon(
-      icon: Icon(icon, size: 28),
-      label: Text(label, style: const TextStyle(fontSize: 20)),
-      style: ElevatedButton.styleFrom(
-        minimumSize: const Size(250, 60),
-        backgroundColor: const Color(0xFF9F86C0),
-        foregroundColor: Colors.white,
+  // Layout untuk Potret (HP)
+  Widget _buildPortraitLayout() {
+    return Column(
+      children: [
+        const Padding(
+          padding: EdgeInsets.only(top: 20.0),
+          child: Text("BAGUS!",
+              style: TextStyle(
+                  fontSize: 28, // Ukuran font disesuaikan
+                  color: textDark,
+                  fontWeight: FontWeight.bold)),
+        ),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.all(20.0), // Padding disesuaikan
+            child: ClipRRect(
+                borderRadius: BorderRadius.circular(15), // Sudut lebih bulat
+                child: Image.file(widget.imageFile, fit: BoxFit.contain)),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 25),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              // Tombol Ulangi (Outline)
+              Expanded(child: _buildRetakeButton()),
+              const SizedBox(width: 15),
+              // Tombol Lanjut (Elevated)
+              Expanded(child: _buildContinueButton()),
+            ],
+          ),
+        )
+      ],
+    );
+  }
+
+  // Layout untuk Lanskap (Tablet)
+  Widget _buildLandscapeLayout() {
+    return Row(
+      children: [
+        Expanded(
+          flex: 3,
+          child: Padding(
+            padding: const EdgeInsets.all(30.0),
+            child: ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: Image.file(widget.imageFile, fit: BoxFit.contain)),
+          ),
+        ),
+        Expanded(
+          flex: 2,
+          child: Padding(
+            padding: const EdgeInsets.only(right: 30), // Padding kanan
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Text("BAGUS!",
+                    style: TextStyle(
+                        fontSize: 32,
+                        color: textDark,
+                        fontWeight: FontWeight.bold)),
+                const SizedBox(height: 50),
+                _buildRetakeButton(isLandscape: true), // Tombol lebih besar
+                const SizedBox(height: 30),
+                _buildContinueButton(isLandscape: true), // Tombol lebih besar
+              ],
+            ),
+          ),
+        )
+      ],
+    );
+  }
+
+  // Widget untuk tombol Ulangi
+  Widget _buildRetakeButton({bool isLandscape = false}) {
+    return OutlinedButton.icon(
+      icon: Icon(Icons.replay, size: isLandscape ? 28 : 24),
+      label: Text('ULANGI', style: TextStyle(fontSize: isLandscape ? 20 : 18)),
+      style: OutlinedButton.styleFrom(
+        minimumSize: Size(0, isLandscape ? 60 : 55), // Tinggi berbeda
+        foregroundColor: textDark,
+        side: const BorderSide(color: accentGrey, width: 1.5),
       ),
-      onPressed: onPressed,
+      onPressed: () {
+        Navigator.of(context).pop(PreviewAction.retake);
+      },
+    );
+  }
+
+  // Widget untuk tombol Lanjut
+  Widget _buildContinueButton({bool isLandscape = false}) {
+    return ElevatedButton.icon(
+      icon: Icon(Icons.check_circle_outline, size: isLandscape ? 28 : 24),
+      label: Text('LANJUT', style: TextStyle(fontSize: isLandscape ? 20 : 18)),
+      style: ElevatedButton.styleFrom(
+        minimumSize: Size(0, isLandscape ? 60 : 55), // Tinggi berbeda
+      ),
+      onPressed: () {
+        Navigator.of(context).pop(PreviewAction.continuePhoto);
+      },
     );
   }
 }
