@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:photo_box/main.dart'; // Import untuk warna
-import 'package:photo_box/main.dart'; // Import untuk warna
 import 'package:photo_box/session_complete_screen.dart';
 import 'package:photo_box/preview_screen.dart';
 
@@ -30,11 +29,10 @@ class _HomeScreenState extends State<HomeScreen> {
   final List<XFile> _takenImages = [];
   String _message = "SIAP-SIAP!";
   int _countdown = 3;
-  String _message = "SIAP-SIAP!";
-  int _countdown = 3;
+  // Hapus duplikat _message dan _countdown
   Timer? _countdownTimer;
   bool _showGetReady = true;
-  bool _showGetReady = true;
+  // Hapus duplikat _showGetReady
 
   @override
   void initState() {
@@ -61,7 +59,6 @@ class _HomeScreenState extends State<HomeScreen> {
   void _startCountdown() {
     setState(() {
       _message = "SENYUM!";
-      _message = "SENYUM!";
       _countdown = 5;
     });
 
@@ -79,7 +76,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _takePicture() async {
-     try {
+    try {
       await _initializeControllerFuture;
       final image = await _controller.takePicture();
 
@@ -87,6 +84,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
       final result = await Navigator.of(context).push(
         MaterialPageRoute(
+          // PERBAIKAN: Menggunakan image.path untuk PhotoViewerScreen
+          // Asumsi PhotoViewerScreen menerima String path, bukan File
+          // Jika PhotoViewerScreen menerima File, gunakan: File(image.path)
           builder: (context) => PreviewScreen(imageFile: File(image.path)),
         ),
       );
@@ -101,11 +101,7 @@ class _HomeScreenState extends State<HomeScreen> {
             setState(() => _showGetReady = false);
             _startCountdown();
           }
-        Future.delayed(const Duration(seconds: 1), () {
-          if (mounted) {
-            setState(() => _showGetReady = false);
-            _startCountdown();
-          }
+          // PERBAIKAN: Kurung kurawal hilang di sini
         });
       } else {
         _takenImages.add(image);
@@ -114,8 +110,7 @@ class _HomeScreenState extends State<HomeScreen> {
             _currentTake++;
             _message = "FOTO BERIKUTNYA!";
             _showGetReady = true;
-            _message = "FOTO BERIKUTNYA!";
-            _showGetReady = true;
+            // Hapus duplikat setState
           });
           Future.delayed(const Duration(seconds: 1), () {
             if (mounted) {
@@ -135,11 +130,11 @@ class _HomeScreenState extends State<HomeScreen> {
           );
         }
       }
+      // PERBAIKAN: Tambahkan block 'catch'
     } catch (e) {
       debugPrint('Error taking picture: $e');
     }
   }
-
 
   @override
   void dispose() {
@@ -172,8 +167,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: Container(
                     width: frameWidth,
                     height: frameHeight,
-                    width: frameWidth,
-                    height: frameHeight,
+                    // Hapus duplikat width dan height
                     decoration: BoxDecoration(
                       color: backgroundLight,
                       borderRadius: BorderRadius.circular(isPortrait ? 30 : 40),
@@ -182,9 +176,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           color: Colors.black.withAlpha(50),
                           blurRadius: 15,
                           spreadRadius: 2,
-                          color: Colors.black.withAlpha(50),
-                          blurRadius: 15,
-                          spreadRadius: 2,
+                          // Hapus duplikat boxShadow
                         ),
                       ],
                     ),
@@ -261,8 +253,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   right: 0,
                   child: const Column(
                     children: [
-                      Text(
-                        "LIHAT KE KAMERA",
+                      // PERBAIKAN: Hapus Text() ganda
                       Text(
                         "LIHAT KE KAMERA",
                         style: TextStyle(
@@ -281,8 +272,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: Text(
                     "FOTO $_currentTake / ${widget.totalTakes}",
                     textAlign: TextAlign.center,
-                    "FOTO $_currentTake / ${widget.totalTakes}",
-                    textAlign: TextAlign.center,
+                    // Hapus duplikat text dan textAlign
                     style: const TextStyle(
                         color: textDark,
                         fontSize: 20,

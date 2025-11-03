@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:photo_box/main.dart'; // Import untuk warna
-import 'package:photo_box/main.dart'; // Import untuk warna
+import 'package:photo_box/printing_services.dart'; // Import service printer
 
 enum PhotostripLayout {
   vertical3,
@@ -41,6 +41,12 @@ class _PhotostripCreatorScreenState extends State<PhotostripCreatorScreen> {
   List<String?> _currentLayoutImages = [];
   final GlobalKey _repaintBoundaryKey = GlobalKey();
 
+  // State untuk printing
+  final PrintingService _printingService = PrintingService();
+  String? _generatedPhotostripPath;
+  bool _isSaving = false;
+  bool _isPrinting = false;
+
   @override
   void initState() {
     super.initState();
@@ -61,6 +67,7 @@ class _PhotostripCreatorScreenState extends State<PhotostripCreatorScreen> {
     }
     setState(() {
       _selectedLayout = layout;
+      _generatedPhotostripPath = null; // Reset jika layout diganti
       _currentLayoutImages = List.filled(numberOfSlots, null);
       for (int i = 0;
           i < numberOfSlots && i < widget.sessionImages.length;
@@ -70,12 +77,16 @@ class _PhotostripCreatorScreenState extends State<PhotostripCreatorScreen> {
     });
   }
 
+  // Fungsi untuk Generate dan Save
   Future<void> _generateAndSavePhotostrip() async {
-     try {
+    if (_isSaving) return;
+    setState(() => _isSaving = true);
+
+    try {
       RenderRepaintBoundary boundary = _repaintBoundaryKey.currentContext!
           .findRenderObject() as RenderRepaintBoundary;
-      // Tambahkan delay singkat sebelum menangkap gambar untuk memastikan render selesai
-      await Future.delayed(const Duration(milliseconds: 100));
+      await Future.delayed(
+          const Duration(milliseconds: 100)); // Delay untuk render
       ui.Image image = await boundary.toImage(pixelRatio: 3.0);
       ByteData? byteData =
           await image.toByteData(format: ui.ImageByteFormat.png);
@@ -97,69 +108,135 @@ class _PhotostripCreatorScreenState extends State<PhotostripCreatorScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Photostrip berhasil disimpan!')));
+      
+      // Simpan path untuk tombol Print/Selesai
+      setState(() {
+        _generatedPhotostripPath = outputPath;
+        _isSaving = false;
+      });
+
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Gagal membuat photostrip: $e')));
+      setState(() => _isSaving = false);
     }
+  }
+
+  // Fungsi untuk Cetak
+  Future<void> _printPhotostrip() async {
+    if (_generatedPhotostripPath == null) return;
+    if (_isPrinting) return;
+
+    setState(() => _isPrinting = true);
+    
+    try {
+      // 1. Hubungkan ke printer
+      await _printingService.connectToPrinter('PRJ-80BT');
+
+      // 2. Cetak gambar dari path
+      await _printingService.printImage(_generatedPhotostripPath!);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Berhasil dicetak!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Gagal mencetak: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isPrinting = false);
+      }
+    }
+  }
+
+  // Fungsi untuk Selesai
+  void _finishSession() {
+    // Kembali ke layar Welcome (paling awal)
+    Navigator.of(context).popUntil((route) => route.isFirst);
   }
 
 
   @override
   Widget build(BuildContext context) {
-    // Dapatkan tinggi layar yang tersedia setelah AppBar dan padding
-    final availableHeight = MediaQuery.of(context).size.height -
-        kToolbarHeight -
-        MediaQuery.of(context).padding.top -
-        MediaQuery.of(context).padding.bottom -
-        40; // 40 = padding vertikal
-
     return Scaffold(
       backgroundColor: backgroundDark, // Background abu-abu
-      appBar: AppBar(title: const Text('Buat Photostrip Anda')),
+      appBar: AppBar(
+        title: const Text('Buat Photostrip Anda'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          // Jika sudah digenerate, konfirmasi kembali
+          onPressed: () {
+            if (_generatedPhotostripPath != null) {
+              showDialog(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: const Text('Keluar?'),
+                  content: const Text('Photostrip sudah disimpan. Anda yakin ingin keluar?'),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('Batal'),
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        Navigator.of(context).pop(); // Tutup dialog
+                        Navigator.of(context).pop(); // Kembali ke SessionComplete
+                      },
+                      child: const Text('Ya, Keluar'),
+                    ),
+                  ],
+                ),
+              );
+            } else {
+              Navigator.of(context).pop();
+            }
+          },
+        ),
+      ),
       body: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
             flex: 2,
             child: SingleChildScrollView(
-              // Scroll untuk template jika perlu
               padding:
                   const EdgeInsets.symmetric(vertical: 20.0, horizontal: 10.0),
               child: Center(child: _buildPhotostripTemplate()),
             ),
           ),
-          const VerticalDivider(width: 1, color: accentGrey), // Warna divider
+          const VerticalDivider(width: 1, color: accentGrey),
           Expanded(
             flex: 3,
             child: Padding(
-              // Padding luar untuk sisi kanan
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
-              // --- PERBAIKAN: Gunakan Column tanpa SingleChildScrollView di sini ---
+              padding: const EdgeInsets.all(20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   const Text("DRAG FOTO KE SLOT KIRI",
                       style: TextStyle(
-                          color: textDark, // Warna teks disesuaikan
-                          fontSize: 18, // Ukuran disesuaikan
+                          color: textDark,
+                          fontSize: 18,
                           fontWeight: FontWeight.bold)),
                   const SizedBox(height: 15),
-                  // --- PERBAIKAN: Beri tinggi terbatas pada GridView menggunakan Expanded ---
                   Expanded(child: _buildDraggableImageGrid()),
                   const SizedBox(height: 15),
-                  _buildLayoutOptions(),
+                  // Hanya tampilkan layout options jika strip BELUM digenerate
+                  if (_generatedPhotostripPath == null) _buildLayoutOptions(),
                   const SizedBox(height: 25),
-                  ElevatedButton.icon(
-                    icon: const Icon(Icons.download_outlined,
-                        size: 24), // Ukuran ikon disesuaikan
-                    label: const Text('GENERATE & SAVE'),
-                    style: ElevatedButton.styleFrom(
-                      minimumSize:
-                          const Size(double.infinity, 55), // Tinggi tombol
-                    ),
-                    onPressed: _generateAndSavePhotostrip,
-                  ),
+                  // Tampilkan tombol berdasarkan state
+                  _buildBottomActionButtons(),
                 ],
               ),
             ),
@@ -169,14 +246,59 @@ class _PhotostripCreatorScreenState extends State<PhotostripCreatorScreen> {
     );
   }
 
+  // Bagian ini menampilkan tombol Generate ATAU tombol Print/Selesai
+  Widget _buildBottomActionButtons() {
+    if (_generatedPhotostripPath == null) {
+      // State Awal: Tombol Generate
+      return ElevatedButton.icon(
+        icon: _isSaving
+            ? const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(color: textDark))
+            : const Icon(Icons.download_outlined, size: 24),
+        label: Text(_isSaving ? 'MENYIMPAN...' : 'GENERATE & SAVE'),
+        style: ElevatedButton.styleFrom(
+          minimumSize: const Size(double.infinity, 55),
+        ),
+        onPressed: _isSaving ? null : _generateAndSavePhotostrip,
+      );
+    } else {
+      // State Kedua: Tombol Cetak dan Selesai
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ElevatedButton.icon(
+            icon: _isPrinting
+                ? const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(color: textDark))
+                : const Icon(Icons.print_outlined, size: 24),
+            label: Text(_isPrinting ? 'MENCETAK...' : 'CETAK PHOTOSTRIP'),
+            style: ElevatedButton.styleFrom(
+              minimumSize: const Size(double.infinity, 55),
+              backgroundColor: primaryYellow, // Tombol cetak
+            ),
+            onPressed: _isPrinting ? null : _printPhotostrip,
+          ),
+          const SizedBox(height: 15),
+          OutlinedButton.icon(
+            icon: const Icon(Icons.check_circle_outline, size: 24),
+            label: const Text('SELESAI (SESI BARU)'),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size(double.infinity, 55),
+            ),
+            onPressed: _finishSession,
+          ),
+        ],
+      );
+    }
+  }
+
 
   Widget _buildPhotostripTemplate() {
     Widget content;
-    // Lebar template disesuaikan di potret
-    final templateWidth = MediaQuery.of(context).orientation == Orientation.portrait 
-                          ? (MediaQuery.of(context).size.width * 0.7) 
-                          : 220.0;
-
     switch (_selectedLayout) {
       case PhotostripLayout.vertical3:
       case PhotostripLayout.vertical4:
@@ -227,20 +349,12 @@ class _PhotostripCreatorScreenState extends State<PhotostripCreatorScreen> {
         break;
     }
 
+    // Selalu bungkus dengan RepaintBoundary
     return RepaintBoundary(
       key: _repaintBoundaryKey,
       child: Container(
-        width: 200,
+        width: 200, // Lebar photostrip
         decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(8),
-            boxShadow: [
-              BoxShadow(
-                  color: Colors.black.withAlpha(50),
-                  blurRadius: 5,
-                  offset: const Offset(0, 2))
-            ]),
-        padding: const EdgeInsets.all(6),
             color: Colors.white,
             borderRadius: BorderRadius.circular(8),
             boxShadow: [
@@ -259,46 +373,14 @@ class _PhotostripCreatorScreenState extends State<PhotostripCreatorScreen> {
                   color: primaryYellow,
                   borderRadius: BorderRadius.vertical(top: Radius.circular(4))),
               margin: const EdgeInsets.only(bottom: 6),
-              height: 25,
-              decoration: const BoxDecoration(
-                  color: primaryYellow,
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(4))),
-              margin: const EdgeInsets.only(bottom: 6),
               alignment: Alignment.center,
-              child: const Text('PHOTOBOX',
               child: const Text('PHOTOBOX',
                   style: TextStyle(
                       color: textDark,
                       fontSize: 14,
-                      color: textDark,
-                      fontSize: 14,
                       fontWeight: FontWeight.bold)),
             ),
-            content,
-            const SizedBox(height: 5),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDraggableOrDroppableSlot(int index) {
-      final imagePath = (index < _currentLayoutImages.length) ? _currentLayoutImages[index] : null;
-
-              if (imagePath != null) {
-                return Draggable<DragData>(
-                  data: DragData(imagePath: imagePath, fromIndex: index),
-                  feedback: Opacity(
-                    opacity: 0.8,
-                    child: _buildSlotContent(imagePath, isFeedback: true),
-                  ),
-                  childWhenDragging:
-                      _buildSlotContent(imagePath, isDragging: true),
-                  child: _buildDropTargetSlot(index, imagePath),
-                );
-              }
-              return _buildDropTargetSlot(index, null);
-            }),
+            content, // Konten layout
             const SizedBox(height: 5), // Spacer footer
           ],
         ),
@@ -306,35 +388,65 @@ class _PhotostripCreatorScreenState extends State<PhotostripCreatorScreen> {
     );
   }
 
+  Widget _buildDraggableOrDroppableSlot(int index) {
+    final imagePath =
+        (index < _currentLayoutImages.length) ? _currentLayoutImages[index] : null;
+
+    // Jika path ada, buat Draggable
+    if (imagePath != null) {
+      return Draggable<DragData>(
+        // Data yang dibawa saat drag
+        data: DragData(imagePath: imagePath, fromIndex: index),
+        // Tampilan saat di-drag
+        feedback: Opacity(
+          opacity: 0.8,
+          child: _buildSlotContent(imagePath, isFeedback: true),
+        ),
+        // Tampilan slot asli saat di-drag
+        childWhenDragging: _buildSlotContent(imagePath, isDragging: true),
+        // Tampilan slot normal (sebagai target drop juga)
+        child: _buildDropTargetSlot(index, imagePath),
+      );
+    }
+    // Jika path null, buat slot kosong (hanya target drop)
+    return _buildDropTargetSlot(index, null);
+  }
+
   Widget _buildDropTargetSlot(int index, String? imagePath) {
     if (index >= _currentLayoutImages.length) {
-      return const SizedBox.shrink();
+      return const SizedBox.shrink(); // Safety check
     }
+
+    bool isTargetLocked = _generatedPhotostripPath != null; // Kunci jika sudah digenerate
 
     return DragTarget<Object>(
       builder: (context, candidateData, rejectedData) {
-        bool isHighlighted = candidateData.isNotEmpty;
-        if (candidateData.isNotEmpty && candidateData.first is DragData) {
-          if ((candidateData.first as DragData).fromIndex == index) {
-            isHighlighted = false;
+        bool isHighlighted = false;
+        if (!isTargetLocked && candidateData.isNotEmpty) {
+          isHighlighted = true;
+          if (candidateData.first is DragData) {
+            if ((candidateData.first as DragData).fromIndex == index) {
+              isHighlighted = false;
+            }
           }
         }
         return _buildSlotContent(imagePath, isHighlighted: isHighlighted);
       },
+      // Hanya terima data jika target tidak dikunci
+      onWillAcceptWithDetails: (details) => !isTargetLocked,
       onAcceptWithDetails: (details) {
         final data = details.data;
         setState(() {
           if (data is String) {
+            // Drag dari grid kanan
             final existingIndex = _currentLayoutImages.indexOf(data);
             if (existingIndex != -1 && existingIndex != index) {
-              _currentLayoutImages[existingIndex] = null;
-            }
-            final existingIndex = _currentLayoutImages.indexOf(data);
-            if (existingIndex != -1 && existingIndex != index) {
+              // Jika gambar sudah ada di slot lain, kosongkan slot lama
               _currentLayoutImages[existingIndex] = null;
             }
             _currentLayoutImages[index] = data;
           } else if (data is DragData) {
+            // Drag dari slot lain (swap)
             final fromIndex = data.fromIndex;
             if (fromIndex != index) {
               final pathFrom = data.imagePath;
@@ -365,11 +477,7 @@ class _PhotostripCreatorScreenState extends State<PhotostripCreatorScreen> {
         decoration: BoxDecoration(
           color: backgroundDark,
           borderRadius: BorderRadius.circular(4),
-          color: backgroundDark,
-          borderRadius: BorderRadius.circular(4),
           border: Border.all(
-            color: isHighlighted ? primaryYellow : accentGrey.withAlpha(100),
-            width: isHighlighted ? 2.5 : 1.5,
             color: isHighlighted ? primaryYellow : accentGrey.withAlpha(100),
             width: isHighlighted ? 2.5 : 1.5,
           ),
@@ -386,8 +494,9 @@ class _PhotostripCreatorScreenState extends State<PhotostripCreatorScreen> {
   }
 
   Widget _buildDraggableImageGrid() {
+    bool isGridLocked = _generatedPhotostripPath != null; // Kunci jika sudah digenerate
+
     return GridView.builder(
-      // Tidak perlu shrinkWrap atau physics karena sudah di dalam Expanded
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 4,
         crossAxisSpacing: 8,
@@ -396,17 +505,12 @@ class _PhotostripCreatorScreenState extends State<PhotostripCreatorScreen> {
       itemCount: widget.sessionImages.length,
       itemBuilder: (context, index) {
         final imagePath = widget.sessionImages[index].path;
-        return Draggable<String>(
+        
+        // Buat item yang bisa di-drag
+        Widget draggableItem = Draggable<String>(
           data: imagePath,
           feedback: Opacity(
             opacity: 0.8,
-            child: Material(
-              borderRadius: BorderRadius.circular(10),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: Image.file(File(imagePath),
-                    width: 80, height: 80, fit: BoxFit.cover),
-              ),
             child: Material(
               borderRadius: BorderRadius.circular(10),
               child: ClipRRect(
@@ -426,6 +530,16 @@ class _PhotostripCreatorScreenState extends State<PhotostripCreatorScreen> {
               borderRadius: BorderRadius.circular(8),
               child: Image.file(File(imagePath), fit: BoxFit.cover)),
         );
+
+        // Jika grid dikunci, bungkus dengan Opacity agar terlihat non-interaktif
+        if (isGridLocked) {
+          return Opacity(
+            opacity: 0.4,
+            child: draggableItem,
+          );
+        }
+        
+        return draggableItem;
       },
     );
   }
@@ -439,10 +553,10 @@ class _PhotostripCreatorScreenState extends State<PhotostripCreatorScreen> {
         const SizedBox(width: 25),
         _buildLayoutOption(
             PhotostripLayout.vertical4, Icons.view_day_rounded, '4 Foto'),
+        // Anda bisa tambahkan layout lain di sini jika mau
       ],
     );
   }
-
 
   Widget _buildLayoutOption(
       PhotostripLayout layout, IconData icon, String label) {
@@ -453,10 +567,7 @@ class _PhotostripCreatorScreenState extends State<PhotostripCreatorScreen> {
         children: [
           Container(
             padding: const EdgeInsets.all(12),
-            padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: isSelected ? primaryYellow : backgroundDark,
-              borderRadius: BorderRadius.circular(15),
               color: isSelected ? primaryYellow : backgroundDark,
               borderRadius: BorderRadius.circular(15),
               border: Border.all(

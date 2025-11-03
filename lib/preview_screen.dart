@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:photo_box/main.dart'; // Import untuk warna tema
-import 'package:photo_box/main.dart'; // Import untuk warna tema
 
 enum PreviewAction { retake, continuePhoto }
 
@@ -41,7 +40,6 @@ class _PreviewScreenState extends State<PreviewScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: backgroundLight, // Latar belakang putih
       backgroundColor: backgroundLight, // Latar belakang putih
       body: SafeArea(
         child: Column(

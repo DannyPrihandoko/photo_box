@@ -1,6 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart'; // Import ini DIBUTUHKAN, abaikan warning 'unused'
+import 'package:path_provider/path_provider.dart'; // Import ini DIBUTUHKAN
 import 'package:photo_box/main.dart';
 import 'package:photo_box/photo_viewer_screen.dart';
 
@@ -48,7 +48,6 @@ class _GalleryScreenState extends State<GalleryScreen> {
         .whereType<File>()
         .where((file) => file.path.endsWith('.jpg')));
 
-    // --- PERBAIKAN: Tambahkan return di sini ---
     return images;
   }
 
@@ -58,7 +57,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
       backgroundColor: backgroundDark,
       appBar: AppBar(
         title: const Text('Galeri'),
-        title: const Text('Galeri'),
+        // Hapus duplikat appBar dan backgroundColor
       ),
       body: FutureBuilder<List<Directory>>(
         future: _sessionFoldersFuture,
@@ -70,20 +69,24 @@ class _GalleryScreenState extends State<GalleryScreen> {
           if (snapshot.hasError ||
               !snapshot.hasData ||
               snapshot.data!.isEmpty) {
-            return const Center(
+            // PERBAIKAN: Hapus 'const' dari Center karena children-nya tidak const
+            return Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.photo_library_outlined,
-                      size: 80, color: accentGrey),
-                  // --- PERBAIKAN: Tambahkan const ---
-                  const SizedBox(height: 20),
-                  Text(
+                  const Icon(Icons.photo_library_outlined, // Tambahkan const di sini
+                      size: 80,
+                      color: accentGrey),
+                  // PERBAIKAN: Hapus 'const' yang tidak perlu dari SizedBox
+                  const SizedBox(height: 20), // Tambahkan const di sini
+                  const Text(
+                    // Tambahkan const di sini
                     'Galeri masih kosong.',
                     textAlign: TextAlign.center,
                     style: TextStyle(color: textDark, fontSize: 22),
                   ),
-                  Text(
+                  const Text(
+                    // Tambahkan const di sini
                     'Hasil fotomu akan muncul di sini!',
                     textAlign: TextAlign.center,
                     style: TextStyle(color: accentGrey, fontSize: 16),
@@ -96,8 +99,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
           final sessionFolders = snapshot.data!;
 
           return ListView.builder(
-            padding: const EdgeInsets.only(top: 8, bottom: 8),
-            padding: const EdgeInsets.only(top: 8, bottom: 8),
+            padding: const EdgeInsets.only(top: 8, bottom: 8), // Hapus duplikat padding
             itemCount: sessionFolders.length,
             itemBuilder: (context, index) {
               final sessionDir = sessionFolders[index];
@@ -148,8 +150,10 @@ class _GalleryScreenState extends State<GalleryScreen> {
                                     Navigator.push(
                                       context,
                                       MaterialPageRoute(
+                                        // PERBAIKAN: Ubah 'imageFile: imageFile' 
+                                        // menjadi 'imagePath: imageFile.path'
                                         builder: (context) => PhotoViewerScreen(
-                                            imageFile: imageFile),
+                                            imagePath: imageFile.path),
                                       ),
                                     );
                                   },
