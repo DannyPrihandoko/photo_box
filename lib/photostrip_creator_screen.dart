@@ -6,8 +6,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:photo_box/main.dart'; // Import untuk warna
+import 'package:photo_box/main.dart'; // Import untuk warna
 
-enum PhotostripLayout { vertical3, vertical4 }
+enum PhotostripLayout {
+  vertical3,
+  vertical4,
+  fourSquare,
+  onePlusTwo,
+}
 
 class PhotostripCreatorScreen extends StatefulWidget {
   final List<XFile> sessionImages;
@@ -38,11 +44,21 @@ class _PhotostripCreatorScreenState extends State<PhotostripCreatorScreen> {
   @override
   void initState() {
     super.initState();
-    _updateLayoutImages(PhotostripLayout.vertical3);
+    _updateLayoutImages(_selectedLayout);
   }
 
   void _updateLayoutImages(PhotostripLayout layout) {
-    int numberOfSlots = layout == PhotostripLayout.vertical3 ? 3 : 4;
+    int numberOfSlots;
+    switch (layout) {
+      case PhotostripLayout.vertical3:
+      case PhotostripLayout.onePlusTwo:
+        numberOfSlots = 3;
+        break;
+      case PhotostripLayout.vertical4:
+      case PhotostripLayout.fourSquare:
+        numberOfSlots = 4;
+        break;
+    }
     setState(() {
       _selectedLayout = layout;
       _currentLayoutImages = List.filled(numberOfSlots, null);
@@ -55,7 +71,7 @@ class _PhotostripCreatorScreenState extends State<PhotostripCreatorScreen> {
   }
 
   Future<void> _generateAndSavePhotostrip() async {
-    try {
+     try {
       RenderRepaintBoundary boundary = _repaintBoundaryKey.currentContext!
           .findRenderObject() as RenderRepaintBoundary;
       // Tambahkan delay singkat sebelum menangkap gambar untuk memastikan render selesai
@@ -87,6 +103,7 @@ class _PhotostripCreatorScreenState extends State<PhotostripCreatorScreen> {
           SnackBar(content: Text('Gagal membuat photostrip: $e')));
     }
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -152,12 +169,78 @@ class _PhotostripCreatorScreenState extends State<PhotostripCreatorScreen> {
     );
   }
 
+
   Widget _buildPhotostripTemplate() {
+    Widget content;
+    // Lebar template disesuaikan di potret
+    final templateWidth = MediaQuery.of(context).orientation == Orientation.portrait 
+                          ? (MediaQuery.of(context).size.width * 0.7) 
+                          : 220.0;
+
+    switch (_selectedLayout) {
+      case PhotostripLayout.vertical3:
+      case PhotostripLayout.vertical4:
+        content = Column(
+          mainAxisSize: MainAxisSize.min,
+          children: List.generate(_currentLayoutImages.length, (index) {
+            return _buildDraggableOrDroppableSlot(index);
+          }),
+        );
+        break;
+      case PhotostripLayout.fourSquare:
+        content = Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                Expanded(child: _buildDraggableOrDroppableSlot(0)),
+                const SizedBox(width: 6),
+                Expanded(child: _buildDraggableOrDroppableSlot(1)),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Expanded(child: _buildDraggableOrDroppableSlot(2)),
+                const SizedBox(width: 6),
+                Expanded(child: _buildDraggableOrDroppableSlot(3)),
+              ],
+            ),
+          ],
+        );
+        break;
+      case PhotostripLayout.onePlusTwo:
+        content = Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildDraggableOrDroppableSlot(0),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Expanded(child: _buildDraggableOrDroppableSlot(1)),
+                const SizedBox(width: 6),
+                Expanded(child: _buildDraggableOrDroppableSlot(2)),
+              ],
+            ),
+          ],
+        );
+        break;
+    }
+
     return RepaintBoundary(
       key: _repaintBoundaryKey,
       child: Container(
         width: 200,
         decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(8),
+            boxShadow: [
+              BoxShadow(
+                  color: Colors.black.withAlpha(50),
+                  blurRadius: 5,
+                  offset: const Offset(0, 2))
+            ]),
+        padding: const EdgeInsets.all(6),
             color: Colors.white,
             borderRadius: BorderRadius.circular(8),
             boxShadow: [
@@ -176,15 +259,31 @@ class _PhotostripCreatorScreenState extends State<PhotostripCreatorScreen> {
                   color: primaryYellow,
                   borderRadius: BorderRadius.vertical(top: Radius.circular(4))),
               margin: const EdgeInsets.only(bottom: 6),
+              height: 25,
+              decoration: const BoxDecoration(
+                  color: primaryYellow,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(4))),
+              margin: const EdgeInsets.only(bottom: 6),
               alignment: Alignment.center,
+              child: const Text('PHOTOBOX',
               child: const Text('PHOTOBOX',
                   style: TextStyle(
                       color: textDark,
                       fontSize: 14,
+                      color: textDark,
+                      fontSize: 14,
                       fontWeight: FontWeight.bold)),
             ),
-            ...List.generate(_currentLayoutImages.length, (index) {
-              final imagePath = _currentLayoutImages[index];
+            content,
+            const SizedBox(height: 5),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDraggableOrDroppableSlot(int index) {
+      final imagePath = (index < _currentLayoutImages.length) ? _currentLayoutImages[index] : null;
 
               if (imagePath != null) {
                 return Draggable<DragData>(
@@ -208,6 +307,10 @@ class _PhotostripCreatorScreenState extends State<PhotostripCreatorScreen> {
   }
 
   Widget _buildDropTargetSlot(int index, String? imagePath) {
+    if (index >= _currentLayoutImages.length) {
+      return const SizedBox.shrink();
+    }
+
     return DragTarget<Object>(
       builder: (context, candidateData, rejectedData) {
         bool isHighlighted = candidateData.isNotEmpty;
@@ -222,6 +325,10 @@ class _PhotostripCreatorScreenState extends State<PhotostripCreatorScreen> {
         final data = details.data;
         setState(() {
           if (data is String) {
+            final existingIndex = _currentLayoutImages.indexOf(data);
+            if (existingIndex != -1 && existingIndex != index) {
+              _currentLayoutImages[existingIndex] = null;
+            }
             final existingIndex = _currentLayoutImages.indexOf(data);
             if (existingIndex != -1 && existingIndex != index) {
               _currentLayoutImages[existingIndex] = null;
@@ -258,7 +365,11 @@ class _PhotostripCreatorScreenState extends State<PhotostripCreatorScreen> {
         decoration: BoxDecoration(
           color: backgroundDark,
           borderRadius: BorderRadius.circular(4),
+          color: backgroundDark,
+          borderRadius: BorderRadius.circular(4),
           border: Border.all(
+            color: isHighlighted ? primaryYellow : accentGrey.withAlpha(100),
+            width: isHighlighted ? 2.5 : 1.5,
             color: isHighlighted ? primaryYellow : accentGrey.withAlpha(100),
             width: isHighlighted ? 2.5 : 1.5,
           ),
@@ -296,6 +407,13 @@ class _PhotostripCreatorScreenState extends State<PhotostripCreatorScreen> {
                 child: Image.file(File(imagePath),
                     width: 80, height: 80, fit: BoxFit.cover),
               ),
+            child: Material(
+              borderRadius: BorderRadius.circular(10),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: Image.file(File(imagePath),
+                    width: 80, height: 80, fit: BoxFit.cover),
+              ),
             ),
           ),
           childWhenDragging: Opacity(
@@ -325,6 +443,7 @@ class _PhotostripCreatorScreenState extends State<PhotostripCreatorScreen> {
     );
   }
 
+
   Widget _buildLayoutOption(
       PhotostripLayout layout, IconData icon, String label) {
     bool isSelected = _selectedLayout == layout;
@@ -334,7 +453,10 @@ class _PhotostripCreatorScreenState extends State<PhotostripCreatorScreen> {
         children: [
           Container(
             padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
+              color: isSelected ? primaryYellow : backgroundDark,
+              borderRadius: BorderRadius.circular(15),
               color: isSelected ? primaryYellow : backgroundDark,
               borderRadius: BorderRadius.circular(15),
               border: Border.all(

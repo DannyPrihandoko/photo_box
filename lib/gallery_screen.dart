@@ -58,6 +58,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
       backgroundColor: backgroundDark,
       appBar: AppBar(
         title: const Text('Galeri'),
+        title: const Text('Galeri'),
       ),
       body: FutureBuilder<List<Directory>>(
         future: _sessionFoldersFuture,
@@ -95,6 +96,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
           final sessionFolders = snapshot.data!;
 
           return ListView.builder(
+            padding: const EdgeInsets.only(top: 8, bottom: 8),
             padding: const EdgeInsets.only(top: 8, bottom: 8),
             itemCount: sessionFolders.length,
             itemBuilder: (context, index) {

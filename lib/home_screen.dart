@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:photo_box/main.dart'; // Import untuk warna
+import 'package:photo_box/main.dart'; // Import untuk warna
 import 'package:photo_box/session_complete_screen.dart';
 import 'package:photo_box/preview_screen.dart';
 
@@ -29,7 +30,10 @@ class _HomeScreenState extends State<HomeScreen> {
   final List<XFile> _takenImages = [];
   String _message = "SIAP-SIAP!";
   int _countdown = 3;
+  String _message = "SIAP-SIAP!";
+  int _countdown = 3;
   Timer? _countdownTimer;
+  bool _showGetReady = true;
   bool _showGetReady = true;
 
   @override
@@ -57,6 +61,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void _startCountdown() {
     setState(() {
       _message = "SENYUM!";
+      _message = "SENYUM!";
       _countdown = 5;
     });
 
@@ -74,7 +79,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _takePicture() async {
-    try {
+     try {
       await _initializeControllerFuture;
       final image = await _controller.takePicture();
 
@@ -96,12 +101,19 @@ class _HomeScreenState extends State<HomeScreen> {
             setState(() => _showGetReady = false);
             _startCountdown();
           }
+        Future.delayed(const Duration(seconds: 1), () {
+          if (mounted) {
+            setState(() => _showGetReady = false);
+            _startCountdown();
+          }
         });
       } else {
         _takenImages.add(image);
         if (_currentTake < widget.totalTakes) {
           setState(() {
             _currentTake++;
+            _message = "FOTO BERIKUTNYA!";
+            _showGetReady = true;
             _message = "FOTO BERIKUTNYA!";
             _showGetReady = true;
           });
@@ -127,6 +139,7 @@ class _HomeScreenState extends State<HomeScreen> {
       debugPrint('Error taking picture: $e');
     }
   }
+
 
   @override
   void dispose() {
@@ -154,8 +167,11 @@ class _HomeScreenState extends State<HomeScreen> {
             return Stack(
               alignment: Alignment.center,
               children: [
+                // Bingkai Kamera dengan gaya awan/bulat
                 Center(
                   child: Container(
+                    width: frameWidth,
+                    height: frameHeight,
                     width: frameWidth,
                     height: frameHeight,
                     decoration: BoxDecoration(
@@ -163,6 +179,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       borderRadius: BorderRadius.circular(isPortrait ? 30 : 40),
                       boxShadow: [
                         BoxShadow(
+                          color: Colors.black.withAlpha(50),
+                          blurRadius: 15,
+                          spreadRadius: 2,
                           color: Colors.black.withAlpha(50),
                           blurRadius: 15,
                           spreadRadius: 2,
@@ -187,6 +206,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               ),
                             ),
                           ),
+                          // Overlay pesan dan countdown
                           Container(
                             color: Colors.black.withAlpha(50),
                             child: Center(
@@ -234,12 +254,15 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                 ),
+                // Elemen UI Luar Bingkai
                 Positioned(
                   top: isPortrait ? 40 : 50,
                   left: 0,
                   right: 0,
                   child: const Column(
                     children: [
+                      Text(
+                        "LIHAT KE KAMERA",
                       Text(
                         "LIHAT KE KAMERA",
                         style: TextStyle(
@@ -256,6 +279,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   left: 0,
                   right: 0,
                   child: Text(
+                    "FOTO $_currentTake / ${widget.totalTakes}",
+                    textAlign: TextAlign.center,
                     "FOTO $_currentTake / ${widget.totalTakes}",
                     textAlign: TextAlign.center,
                     style: const TextStyle(

@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:photo_box/main.dart'; // Import untuk warna tema
+import 'package:photo_box/main.dart'; // Import untuk warna tema
 
 enum PreviewAction { retake, continuePhoto }
 
@@ -24,6 +25,7 @@ class _PreviewScreenState extends State<PreviewScreen>
           ..forward(); // Animasi progress bar dimulai
     _animationController.addStatusListener((status) {
       // Otomatis lanjut jika waktu habis
+      // Otomatis lanjut jika waktu habis
       if (status == AnimationStatus.completed && mounted) {
         Navigator.of(context).pop(PreviewAction.continuePhoto);
       }
@@ -40,9 +42,11 @@ class _PreviewScreenState extends State<PreviewScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: backgroundLight, // Latar belakang putih
+      backgroundColor: backgroundLight, // Latar belakang putih
       body: SafeArea(
         child: Column(
           children: [
+            // Progress bar di atas
             // Progress bar di atas
             LinearProgressIndicator(
               value: _animationController.value,
