@@ -24,3 +24,7 @@ plugins {
 }
 
 include(":app")
+
+// --- SEMUA KODE PATCH DIHAPUS DARI FILE INI ---
+// File ini sekarang sudah bersih.
+

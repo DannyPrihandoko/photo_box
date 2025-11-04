@@ -22,7 +22,9 @@ dependencies:
   # Dependensi yang kita tambahkan untuk fitur
   image_gallery_saver: ^2.0.3
   image_picker: ^1.1.2
-  blue_thermal_printer: ^1.2.2 # (Sudah versi terbaru)
+  # Package printer baru yang di-maintain
+  print_bluetooth_thermal: ^1.1.6 # (atau versi terbaru)
+  esc_pos_utils_plus: ^2.0.4
 
   # Default
   cupertino_icons: ^1.0.6
