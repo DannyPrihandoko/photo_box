@@ -1,4 +1,6 @@
 import 'dart:io';
+import 'dart:typed_data'; // <-- Tambahan
+import 'dart:ui' as ui; // <-- Tambahan
 import 'package:flutter/material.dart';
 import 'package:photo_box/printing_services.dart'; // Import service kita
 
@@ -21,17 +23,28 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
     });
 
     try {
-      // 1. Hubungkan ke printer
-      await _printingService.connectToPrinter('PRJ-80BT');
+      // --- LOGIKA BARU UNTUK MEMANGGIL FUNGSI YANG ADA ---
 
-      // 2. Cetak gambar dari path
-      await _printingService.printImage(widget.imagePath);
+      // 1. Muat file gambar dari path
+      final Uint8List fileBytes = await File(widget.imagePath).readAsBytes();
 
-      // 3. Tampilkan pesan sukses
+      // 2. Decode gambar menjadi format ui.Image
+      final codec = await ui.instantiateImageCodec(fileBytes);
+      final frame = await codec.getNextFrame();
+      final ui.Image imageToPrint = frame.image;
+
+      // 3. Panggil fungsi printPhotoStripPdf (yang ada di service Anda)
+      // Kita bisa atur mau dikonversi jadi B&W atau tidak di sini
+      await _printingService.printPhotoStripPdf(
+        imageToPrint,
+        convertToBw: false, // Ubah ke true jika ingin hitam putih
+      );
+
+      // 4. Tampilkan pesan sukses
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Foto berhasil dicetak!'),
+            content: Text('Mempersiapkan cetak PDF...'),
             backgroundColor: Colors.green,
           ),
         );
@@ -47,14 +60,12 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
         );
       }
     } finally {
-      // 4. Set state selesai printing
+      // Set state selesai printing
       if (mounted) {
         setState(() {
           _isPrinting = false;
         });
       }
-      // 5. (Opsional) Putuskan koneksi setelah selesai
-      // await _printingService.disconnect();
     }
   }
 

@@ -16,15 +16,22 @@ dependencies:
   # ------------------------
 
   # Dependensi lain dari proyek Anda
-  path_provider: ^2.0.12 # (Versi ini masih OK, tidak ada di daftar outdated)
-  image: ^4.1.3          # (Versi ini masih OK)
+  path_provider: ^2.0.12 
+  image: ^4.1.3          
   
   # Dependensi yang kita tambahkan untuk fitur
   image_gallery_saver: ^2.0.3
   image_picker: ^1.1.2
-  # Package printer baru yang di-maintain
-  print_bluetooth_thermal: ^1.1.6 # (atau versi terbaru)
+  
+  # --- PAKET PRINTER YANG SEHARUSNYA DIGUNAKAN ---
+  # (print_bluetooth_thermal dihapus karena kode kita menggunakan flutter_blue_plus)
+  flutter_blue_plus: ^1.31.22 # <-- BARU: Ini diperlukan untuk Bluetooth
   esc_pos_utils_plus: ^2.0.4
+
+  # --- PAKET UNTUK CETAK PDF ---
+  printing: ^5.14.0  # <-- BARU: Ini diperlukan untuk preview cetak PDF
+  pdf: ^3.10.8       # <-- BARU: Ini diperlukan untuk membuat file PDF
+  # -----------------------------
 
   # Default
   cupertino_icons: ^1.0.6

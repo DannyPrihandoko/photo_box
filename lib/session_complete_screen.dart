@@ -1,16 +1,24 @@
+// lib/session_complete_screen.dart
+
 import 'dart:io';
+import 'dart:typed_data';
+import 'dart:ui' as ui; // <-- Import diperlukan
+import 'dart:async'; // <-- Import diperlukan
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:photo_box/main.dart'; // Import warna (cukup satu kali)
+import 'package:photo_box/main.dart';
 import 'package:photo_box/photostrip_creator_screen.dart';
 
 class SessionCompleteScreen extends StatelessWidget {
   final List<XFile> images;
   final String sessionId;
 
-  const SessionCompleteScreen(
-      {super.key, required this.images, required this.sessionId});
+  const SessionCompleteScreen({
+    super.key,
+    required this.images,
+    required this.sessionId,
+  });
 
   Future<void> _saveAllImages(BuildContext context) async {
     try {
@@ -24,7 +32,6 @@ class SessionCompleteScreen extends StatelessWidget {
 
       for (int i = 0; i < images.length; i++) {
         final String newPath = '$sessionPath/photo_${i + 1}.jpg';
-        // Gunakan copy agar file asli tidak terhapus jika diperlukan lagi
         await File(images[i].path).copy(newPath);
       }
 
@@ -40,20 +47,66 @@ class SessionCompleteScreen extends StatelessWidget {
     }
   }
 
+  ///
+  /// --- FUNGSI BARU UNTUK KONVERSI GAMBAR ---
+  ///
+  /// Mengonversi List<XFile> menjadi List<ui.Image>
+  Future<List<ui.Image>> _convertXFilesToUiImages(List<XFile> xFiles) async {
+    List<ui.Image> uiImages = [];
+    for (XFile xFile in xFiles) {
+      final Uint8List bytes = await xFile.readAsBytes();
+      final ui.Codec codec = await ui.instantiateImageCodec(bytes);
+      final ui.FrameInfo frameInfo = await codec.getNextFrame();
+      uiImages.add(frameInfo.image);
+    }
+    return uiImages;
+  }
+
+  /// --- FUNGSI BARU UNTUK NAVIGASI ---
+  Future<void> _navigateToCreator(BuildContext context) async {
+    // Tampilkan loading
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: CircularProgressIndicator(),
+      ),
+    );
+
+    try {
+      // Lakukan konversi
+      final List<ui.Image> uiImages = await _convertXFilesToUiImages(images);
+
+      if (!context.mounted) return;
+      Navigator.pop(context); // Tutup loading dialog
+
+      // Navigasi ke PhotostripCreatorScreen dengan data yang benar
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => PhotostripCreatorScreen(
+            photos: uiImages, // <-- Parameter yang benar
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      Navigator.pop(context); // Tutup loading dialog
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Gagal memproses gambar: $e')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: backgroundLight, // <-- Hanya perlu satu
-      appBar: AppBar( // <-- Hanya perlu satu
+      backgroundColor: backgroundLight,
+      appBar: AppBar(
         title: const Text("HASIL FOTO"),
         automaticallyImplyLeading: false, // Sembunyikan tombol back
       ),
-      // DUPLIKAT DIHAPUS
-      // backgroundColor: backgroundLight,
-      // appBar: AppBar(
-      //   title: const Text("HASIL FOTO"),
-      //   automaticallyImplyLeading: false,
-      // ),
+      // Kode duplikat (AppBar, backgroundColor) telah dihapus dari sini
       body: SafeArea(
         child: OrientationBuilder(
           builder: (context, orientation) {
@@ -140,17 +193,26 @@ class SessionCompleteScreen extends StatelessWidget {
             style: OutlinedButton.styleFrom(
               padding: EdgeInsets.symmetric(vertical: isPortrait ? 18 : 20),
             ),
+            //
+            // --- PANGGILAN FUNGSI DIUBAH ---
+            //
             onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => PhotostripCreatorScreen(
-                    sessionImages: images, // Ini seharusnya List<XFile>
-                    sessionId: sessionId,
-                  ),
-                ),
-              );
+              _navigateToCreator(context); // <-- Memanggil fungsi konversi
             },
+            //
+            // --- ERROR LAMA (sudah diperbaiki) ---
+            // onPressed: () {
+            //   Navigator.push(
+            //     context,
+            //     MaterialPageRoute(
+            //       builder: (context) => PhotostripCreatorScreen(
+            //         sessionImages: images, // Ini salah
+            //         sessionId: sessionId, // Ini salah
+            //       ),
+            //     ),
+            //   );
+            // },
+            //
           ),
           SizedBox(height: isPortrait ? 15 : 20),
           // Tombol sesi baru dengan gaya outline berbeda
@@ -167,10 +229,8 @@ class SessionCompleteScreen extends StatelessWidget {
             },
           ),
         ],
-        // PROPERTI 'child' YANG SALAH SUDAH DIHAPUS DARI SINI
       ),
     );
   }
-
-  // SEMUA FUNGSI DUPLIKAT DI BAWAH INI TELAH DIHAPUS
+  // Kurung kurawal '}' ekstra telah dihapus dari sini
 }

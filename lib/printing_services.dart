@@ -1,86 +1,157 @@
-import 'dart:io';
-// import 'dart:typed_data'; // Tidak perlu, sudah ada di 'services.dart'
+// lib/printing_services.dart
+
+import 'dart:typed_data';
+import 'dart:ui' as ui;
 import 'package:flutter/services.dart';
-import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
 import 'package:image/image.dart' as img;
+import 'package:printing/printing.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
 
 class PrintingService {
-  bool _connected = false;
-  String _macAddress = '';
+  // Saya asumsikan Anda memiliki logika untuk menemukan dan terhubung ke printer
+  // ... (Kode Anda yang sudah ada, mis: _findPrinter, connectToPrinter, dll) ...
 
-  Future<void> connectToPrinter(String printerName) async {
-    if (_connected) return;
-
-    List<BluetoothInfo> devices = [];
-    try {
-      devices = await PrintBluetoothThermal.pairedBluetooths;
-    } on PlatformException {
-      print("Error getting bonded devices.");
-      throw Exception(
-          "Gagal mendapatkan perangkat Bluetooth. Pastikan Bluetooth aktif.");
-    }
-
-    BluetoothInfo? targetDevice;
-    try {
-      targetDevice = devices.firstWhere((d) => d.name == printerName);
-
-      // --- PERBAIKAN 1: 'macAddress' diubah menjadi 'macAdress' (typo dari package-nya) ---
-      _macAddress = targetDevice.macAdress;
-    } catch (e) {
-      print("Printer $printerName not found.");
-      throw Exception(
-          "Printer '$printerName' tidak ditemukan. Pastikan printer sudah di-pairing.");
-    }
-
-    try {
-      // --- PERBAIKAN 2: 'macPrinter' diubah menjadi 'macPrinterAddress' ---
-      final result =
-          await PrintBluetoothThermal.connect(macPrinterAddress: _macAddress);
-      _connected = result;
-      if (!_connected) {
-        throw Exception("Koneksi gagal terhubung.");
-      }
-    } catch (e) {
-      print("Failed to connect to printer: $e");
-      _connected = false;
-      throw Exception("Gagal terhubung ke printer.");
-    }
+  ///
+  /// FUNGSI BARU UNTUK KONVERSI HITAM PUTIH
+  ///
+  /// Mengubah gambar [img.Image] menjadi versi hitam putih (grayscale).
+  ///
+  /// @param image Gambar asli yang akan dikonversi.
+  /// @return Gambar baru dalam format hitam putih.
+  img.Image convertToBlackAndWhite(img.Image image) {
+    // Menggunakan fungsi grayscale dari package image
+    return img.grayscale(image);
   }
 
-  Future<void> printImage(String path) async {
-    if (!_connected || _macAddress.isEmpty) {
-      throw Exception("Printer tidak terhubung.");
-    }
-
+  ///
+  /// FUNGSI CETAK ESC/POS (THERMAL) YANG DIMODIFIKASI
+  ///
+  /// Menambahkan parameter [convertToBw]
+  ///
+  Future<void> printPhotoStripEscPos(
+    BluetoothDevice device,
+    ui.Image photoStripImage, {
+    bool convertToBw = false, // Parameter baru!
+  }) async {
     try {
-      final File imageFile = File(path);
-      final Uint8List imageBytes = await imageFile.readAsBytes();
-      final img.Image? decodedImage = img.decodeImage(imageBytes);
+      // 1. (Asumsi) Hubungkan ke printer
+      // await device.connect();
+      // ... temukan service dan characteristic ...
+      // BluetoothCharacteristic? txCharacteristic = ...;
 
-      if (decodedImage == null) {
-        throw Exception("Gagal memproses gambar.");
+      // 2. Ubah ui.Image menjadi ByteData
+      final ByteData? byteData =
+          await photoStripImage.toByteData(format: ui.ImageByteFormat.png);
+      if (byteData == null) {
+        throw Exception("Gagal mendapatkan byte data dari gambar.");
+      }
+      final Uint8List bytes = byteData.buffer.asUint8List();
+
+      // 3. Decode menjadi img.Image
+      img.Image? originalImage = img.decodeImage(bytes);
+      if (originalImage == null) {
+        throw Exception("Gagal men-decode gambar.");
       }
 
-      final generator =
-          Generator(PaperSize.mm80, await CapabilityProfile.load());
+      //
+      // 4. --- TITIK INTEGRASI ---
+      //    Jika convertToBw adalah true, panggil fungsi baru kita
+      //
+      img.Image imageToPrint;
+      if (convertToBw) {
+        imageToPrint = convertToBlackAndWhite(originalImage);
+      } else {
+        imageToPrint = originalImage;
+      }
+      // Mulai dari sini, gunakan 'imageToPrint'
+
+      // 5. (Opsional) Resize gambar agar sesuai dengan printer thermal
+      // Sesuaikan 'width' dengan printer Anda (misal: 384 untuk 58mm, 576 untuk 80mm)
+      final img.Image resizedImage = img.copyResize(
+        imageToPrint,
+        width: 384, // Ganti ini sesuai lebar kertas printer Anda
+      );
+
+      // 6. Siapkan data untuk printer
+      final profile = await CapabilityProfile.load();
+      final generator = Generator(PaperSize.mm80, profile); // Sesuaikan PaperSize
       List<int> ticket = [];
-      ticket += generator.image(decodedImage);
-      ticket += generator.feed(2);
 
-      await PrintBluetoothThermal.writeBytes(ticket);
+      // Cetak gambar menggunakan 'resizedImage' (yang sudah di-B&W jika dipilih)
+      ticket.addAll(generator.image(resizedImage));
+      ticket.addAll(generator.feed(2)); // Beri sedikit spasi
+      ticket.addAll(generator.cut());
+
+      // 7. Kirim data ke printer
+      // (Asumsi) Anda punya logika untuk mengirim 'ticket'
+      // await txCharacteristic.write(ticket, withoutResponse: true);
+
+      print("Proses cetak ESC/POS selesai.");
+
+      // 8. (Asumsi) Putuskan koneksi
+      // await device.disconnect();
     } catch (e) {
-      print("Error printing image: $e");
-      throw Exception("Gagal mencetak gambar.");
+      print("Error saat mencetak via ESC/POS: $e");
     }
   }
 
-  Future<void> disconnect() async {
-    if (_connected) {
-      // --- PERBAIKAN 3: 'disconnect()' diubah menjadi 'disconnect' (karena ini getter) ---
-      await PrintBluetoothThermal.disconnect;
-      _connected = false;
-      _macAddress = '';
+  ///
+  /// FUNGSI CETAK PDF (PRINTER STANDAR) YANG DIMODIFIKASI
+  ///
+  /// Menambahkan parameter [convertToBw]
+  ///
+  Future<void> printPhotoStripPdf(
+    ui.Image photoStripImage, {
+    bool convertToBw = false, // Parameter baru!
+  }) async {
+    try {
+      // 1. Ubah ui.Image menjadi ByteData
+      final ByteData? byteData =
+          await photoStripImage.toByteData(format: ui.ImageByteFormat.png);
+      if (byteData == null) {
+        throw Exception("Gagal mendapatkan byte data dari gambar.");
+      }
+      final Uint8List bytes = byteData.buffer.asUint8List();
+
+      // 2. Decode menjadi img.Image (jika perlu konversi B&W)
+      img.Image? imageToProcess;
+      Uint8List finalBytes = bytes;
+
+      if (convertToBw) {
+        imageToProcess = img.decodeImage(bytes);
+        if (imageToProcess != null) {
+          final bwImage = convertToBlackAndWhite(imageToProcess);
+          // Encode kembali ke PNG
+          finalBytes = Uint8List.fromList(img.encodePng(bwImage));
+        }
+      }
+
+      // 3. Buat PDF
+      final pdf = pw.Document();
+      final pdfImage = pw.MemoryImage(finalBytes);
+
+      pdf.addPage(
+        pw.Page(
+          pageFormat: PdfPageFormat.a4,
+          build: (pw.Context context) {
+            return pw.Center(
+              child: pw.Image(pdfImage),
+            );
+          },
+        ),
+      );
+
+      // 4. Cetak PDF menggunakan package 'printing'
+      await Printing.layoutPdf(
+        onLayout: (PdfPageFormat format) async => pdf.save(),
+      );
+
+      print("Proses cetak PDF selesai.");
+    } catch (e) {
+      print("Error saat mencetak via PDF: $e");
     }
   }
 }
