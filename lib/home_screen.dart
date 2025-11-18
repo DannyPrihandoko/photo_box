@@ -25,7 +25,13 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   late CameraController _controller;
   late Future<void> _initializeControllerFuture;
+
   int _currentTake = 1;
+  // Counter untuk jumlah retake yang sudah digunakan
+  int _retakesUsed = 0;
+  // Batas maksimal retake per sesi
+  final int _maxRetakes = 2;
+
   final List<XFile> _takenImages = [];
   String _message = "SIAP-SIAP!";
   int _countdown = 3;
@@ -57,7 +63,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void _startCountdown() {
     setState(() {
       _message = "SENYUM!";
-      _countdown = 5;
+      _countdown = 3;
     });
 
     _countdownTimer?.cancel();
@@ -80,17 +86,28 @@ class _HomeScreenState extends State<HomeScreen> {
 
       if (!mounted) return;
 
+      // Cek apakah kuota retake masih ada
+      bool canRetake = _retakesUsed < _maxRetakes;
+
       final result = await Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (context) => PreviewScreen(imageFile: File(image.path)),
+          builder: (context) => PreviewScreen(
+            imageFile: File(image.path),
+            allowRetake: canRetake, // Kirim status ke PreviewScreen
+            retakesRemaining:
+                _maxRetakes - _retakesUsed, // Opsional: untuk info UI
+          ),
         ),
       );
 
-      if (result == PreviewAction.retake) {
+      if (result == PreviewAction.retake && canRetake) {
+        // Jika user memilih retake DAN kuota masih ada
         setState(() {
+          _retakesUsed++; // Kurangi kuota (tambah counter)
           _message = "ULANGI LAGI!";
           _showGetReady = true;
         });
+
         Future.delayed(const Duration(seconds: 1), () {
           if (mounted) {
             setState(() => _showGetReady = false);
@@ -98,6 +115,7 @@ class _HomeScreenState extends State<HomeScreen> {
           }
         });
       } else {
+        // Jika user memilih lanjut (atau dipaksa lanjut karena retake habis)
         _takenImages.add(image);
         if (_currentTake < widget.totalTakes) {
           setState(() {
@@ -139,10 +157,6 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final screenSize = MediaQuery.of(context).size;
     final isPortrait = screenSize.height > screenSize.width;
-    final frameWidth =
-        isPortrait ? screenSize.width * 0.8 : screenSize.width * 0.5;
-    final frameHeight =
-        isPortrait ? screenSize.height * 0.5 : screenSize.height * 0.7;
 
     return Scaffold(
       backgroundColor: backgroundDark,
@@ -151,6 +165,20 @@ class _HomeScreenState extends State<HomeScreen> {
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.done &&
               _controller.value.isInitialized) {
+            final frameWidth =
+                isPortrait ? screenSize.width * 0.8 : screenSize.width * 0.5;
+
+            final double cameraAspectRatio = _controller.value.aspectRatio;
+            final double visualAspectRatio;
+
+            if (isPortrait) {
+              visualAspectRatio = 1 / cameraAspectRatio;
+            } else {
+              visualAspectRatio = cameraAspectRatio;
+            }
+
+            final frameHeight = frameWidth / visualAspectRatio;
+
             return Stack(
               alignment: Alignment.center,
               children: [
@@ -175,18 +203,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: Stack(
                         alignment: Alignment.center,
                         children: [
-                          SizedBox(
-                            width: frameWidth - 20,
-                            height: frameHeight - 20,
-                            child: FittedBox(
-                              fit: BoxFit.cover,
-                              child: SizedBox(
-                                width: _controller.value.previewSize!.height,
-                                height: _controller.value.previewSize!.width,
-                                child: CameraPreview(_controller),
-                              ),
-                            ),
-                          ),
+                          CameraPreview(_controller),
                           Container(
                             color: Colors.black.withAlpha(50),
                             child: Center(
@@ -234,35 +251,29 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                 ),
-                Positioned(
-                  top: isPortrait ? 40 : 50,
-                  left: 0,
-                  right: 0,
-                  child: const Column(
-                    children: [
-                      Text(
-                        "LIHAT KE KAMERA",
-                        style: TextStyle(
-                            color: textDark,
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold),
-                      ),
-                      Icon(Icons.arrow_downward, color: accentGrey, size: 24)
-                    ],
-                  ),
-                ),
+                // ... Bagian UI bawah tetap sama
                 Positioned(
                   bottom: isPortrait ? 30 : 40,
                   left: 0,
                   right: 0,
-                  child: Text(
-                    "FOTO $_currentTake / ${widget.totalTakes}",
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                        color: textDark,
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 2),
+                  child: Column(
+                    children: [
+                      Text(
+                        "FOTO $_currentTake / ${widget.totalTakes}",
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                            color: textDark,
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 2),
+                      ),
+                      const SizedBox(height: 5),
+                      // Indikator sisa retake (Opsional)
+                      Text(
+                        "Sisa Retake: ${_maxRetakes - _retakesUsed}",
+                        style: const TextStyle(color: accentGrey, fontSize: 12),
+                      ),
+                    ],
                   ),
                 ),
               ],
