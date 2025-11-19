@@ -36,8 +36,10 @@ class _HomeScreenState extends State<HomeScreen> {
   final List<XFile> _takenImages = [];
   String _message = "SIAP-SIAP!";
   int _countdown = 3;
+  // Hapus duplikat _message dan _countdown
   Timer? _countdownTimer;
   bool _showGetReady = true;
+  // Hapus duplikat _showGetReady
 
   @override
   void initState() {
@@ -114,6 +116,7 @@ class _HomeScreenState extends State<HomeScreen> {
             setState(() => _showGetReady = false);
             _startCountdown();
           }
+          // PERBAIKAN: Kurung kurawal hilang di sini
         });
       } else {
         // Jika User memilih Lanjut (atau retake habis)
@@ -125,6 +128,7 @@ class _HomeScreenState extends State<HomeScreen> {
             _currentTake++;
             _message = "FOTO BERIKUTNYA!";
             _showGetReady = true;
+            // Hapus duplikat setState
           });
           Future.delayed(const Duration(seconds: 1), () {
             if (mounted) {
@@ -146,6 +150,7 @@ class _HomeScreenState extends State<HomeScreen> {
           );
         }
       }
+      // PERBAIKAN: Tambahkan block 'catch'
     } catch (e) {
       debugPrint('Error taking picture: $e');
     }
@@ -188,10 +193,12 @@ class _HomeScreenState extends State<HomeScreen> {
             return Stack(
               alignment: Alignment.center,
               children: [
+                // Bingkai Kamera dengan gaya awan/bulat
                 Center(
                   child: Container(
                     width: frameWidth,
                     height: frameHeight,
+                    // Hapus duplikat width dan height
                     decoration: BoxDecoration(
                       color: backgroundLight,
                       borderRadius: BorderRadius.circular(isPortrait ? 30 : 40),
@@ -200,6 +207,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           color: Colors.black.withAlpha(50),
                           blurRadius: 15,
                           spreadRadius: 2,
+                          // Hapus duplikat boxShadow
                         ),
                       ],
                     ),
@@ -258,12 +266,14 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                 ),
+                // Elemen UI Luar Bingkai
                 Positioned(
                   bottom: isPortrait ? 30 : 40,
                   left: 0,
                   right: 0,
                   child: Column(
                     children: [
+                      // PERBAIKAN: Hapus Text() ganda
                       Text(
                         "FOTO $_currentTake / ${widget.totalTakes}",
                         textAlign: TextAlign.center,

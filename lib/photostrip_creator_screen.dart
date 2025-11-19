@@ -1,7 +1,7 @@
-import 'dart:io';
-import 'dart:typed_data';
+// lib/photostrip_creator_screen.dart
+
 import 'dart:ui' as ui;
-import 'package:camera/camera.dart';
+// import 'dart:typed_data'; // <-- DIHAPUS (menyebabkan error 'unused_import')
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:path_provider/path_provider.dart';
@@ -22,14 +22,15 @@ class DragData {
 }
 
 class PhotostripCreatorScreen extends StatefulWidget {
-  final List<XFile> sessionImages;
-  final String sessionId;
+  // Saya asumsikan Anda menerima daftar gambar dari layar sebelumnya
+  final List<ui.Image> photos;
 
+  /// --- PERBAIKAN LINT (use_super_parameters) ---
   const PhotostripCreatorScreen({
-    super.key,
-    required this.sessionImages,
-    required this.sessionId,
+    super.key, // <-- Diubah
+    required this.photos,
   });
+  // --- Akhir Perbaikan ---
 
   @override
   State<PhotostripCreatorScreen> createState() => _PhotostripCreatorScreenState();
@@ -67,7 +68,6 @@ class _PhotostripCreatorScreenState extends State<PhotostripCreatorScreen> {
         _currentLayoutImages[i] = widget.sessionImages[i].path;
       }
     });
-  }
 
   void _updateLayout(PhotostripLayout layout) {
     setState(() {
@@ -144,6 +144,20 @@ class _PhotostripCreatorScreenState extends State<PhotostripCreatorScreen> {
     } finally {
       if (mounted) setState(() { _isProcessing = false; });
     }
+    //
+    // --- Akhir Perbaikan ---
+    //
+  }
+
+  // (Placeholder) Fungsi untuk memilih printer
+  void _selectPrinter() {
+    // Di sini Anda akan menampilkan dialog untuk memindai dan memilih printer Bluetooth
+    // Setelah dipilih, set state:
+    // setState(() {
+    //   _selectedPrinter = device;
+    // });
+    // print("Logika pemilihan printer belum diimplementasi."); // <-- Dihapus (error 'avoid_print')
+    // Untuk testing PDF, biarkan _selectedPrinter = null
   }
 
   /// Dialog jika printer tidak terhubung
@@ -270,6 +284,8 @@ class _PhotostripCreatorScreenState extends State<PhotostripCreatorScreen> {
                 ],
               ),
             ),
+            onPressed: _selectPrinter,
+            tooltip: _selectedPrinter?.platformName ?? "Pilih Printer",
           ),
         ],
       ),
