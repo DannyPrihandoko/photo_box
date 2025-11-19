@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:photo_box/gallery_screen.dart';
 import 'package:photo_box/main.dart'; // Import untuk warna tema
 import 'package:photo_box/session_selection_screen.dart';
+import 'package:photo_box/printer_settings_screen.dart'; // Pastikan file ini ada
 
 class WelcomeScreen extends StatelessWidget {
   final CameraDescription camera;
@@ -80,14 +81,32 @@ class WelcomeScreen extends StatelessWidget {
                 ),
               ),
 
-              // Tombol Galeri
+              // --- TOMBOL SETTING PRINTER (KIRI ATAS) ---
+              Positioned(
+                top: 40,
+                left: 20,
+                child: IconButton(
+                  icon: const Icon(Icons.settings_bluetooth,
+                      color: accentGrey, size: 35),
+                  tooltip: 'Pengaturan Printer',
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (context) => const PrinterSettingsScreen()),
+                    );
+                  },
+                ),
+              ),
+
+              // --- TOMBOL GALERI (KANAN ATAS) ---
               Positioned(
                 top: 40,
                 right: 20,
                 child: IconButton(
-                  icon: const Icon(Icons.photo_library_outlined, // Ikon outline
-                      color: accentGrey, // Warna abu-abu
-                      size: 35),
+                  icon: const Icon(Icons.photo_library_outlined,
+                      color: accentGrey, size: 35),
+                  tooltip: 'Galeri',
                   onPressed: () {
                     Navigator.push(
                       context,
@@ -136,10 +155,10 @@ class WelcomeScreen extends StatelessWidget {
           ),
         ),
         const Text(
-          'PHOTOBOX SENYUM!', // Teks diperbarui
+          'PHOTOBOX SENYUM!',
           textAlign: TextAlign.center,
           style: TextStyle(
-            fontSize: 42, // Ukuran font disesuaikan
+            fontSize: 42,
             color: primaryYellow,
             fontWeight: FontWeight.bold,
             letterSpacing: 2,
@@ -148,6 +167,7 @@ class WelcomeScreen extends StatelessWidget {
         const SizedBox(height: 60),
         ElevatedButton(
           onPressed: () {
+            // --- PERBAIKAN DI SINI: Mengirim parameter camera ---
             Navigator.push(
               context,
               MaterialPageRoute(
@@ -155,11 +175,9 @@ class WelcomeScreen extends StatelessWidget {
             );
           },
           style: ElevatedButton.styleFrom(
-            padding: const EdgeInsets.symmetric(
-                horizontal: 60, vertical: 20), // Padding disesuaikan
-            textStyle: const TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold), // Ukuran teks tombol
+            padding: const EdgeInsets.symmetric(horizontal: 60, vertical: 20),
+            textStyle:
+                const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
           ),
           child: const Text('MULAI'),
         ),
@@ -182,7 +200,7 @@ class WelcomeScreen extends StatelessWidget {
       children: [
         Expanded(
           flex: 2,
-          child: _buildSmileyIcon(size: 250), // Ukuran ikon lebih besar
+          child: _buildSmileyIcon(size: 250),
         ),
         const SizedBox(width: 40),
         Expanded(
@@ -194,15 +212,15 @@ class WelcomeScreen extends StatelessWidget {
               const Text(
                 'Selamat Datang di',
                 style: TextStyle(
-                  fontSize: 32, // Ukuran font lebih besar
+                  fontSize: 32,
                   color: textDark,
                   fontWeight: FontWeight.w300,
                 ),
               ),
               const Text(
-                'PHOTOBOX SENYUM!', // Teks diperbarui
+                'PHOTOBOX SENYUM!',
                 style: TextStyle(
-                  fontSize: 64, // Ukuran font lebih besar
+                  fontSize: 64,
                   color: primaryYellow,
                   fontWeight: FontWeight.bold,
                   letterSpacing: 3,
@@ -211,6 +229,7 @@ class WelcomeScreen extends StatelessWidget {
               const SizedBox(height: 80),
               ElevatedButton(
                 onPressed: () {
+                  // --- PERBAIKAN DI SINI: Mengirim parameter camera ---
                   Navigator.push(
                     context,
                     MaterialPageRoute(
@@ -219,11 +238,10 @@ class WelcomeScreen extends StatelessWidget {
                   );
                 },
                 style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 70, vertical: 25), // Padding lebih besar
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 70, vertical: 25),
                   textStyle: const TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.bold), // Ukuran teks tombol
+                      fontSize: 28, fontWeight: FontWeight.bold),
                 ),
                 child: const Text('MULAI'),
               ),

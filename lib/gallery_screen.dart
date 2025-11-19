@@ -1,6 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart'; // Import ini DIBUTUHKAN, abaikan warning 'unused'
+import 'package:path_provider/path_provider.dart';
 import 'package:photo_box/main.dart';
 import 'package:photo_box/photo_viewer_screen.dart';
 
@@ -48,14 +48,13 @@ class _GalleryScreenState extends State<GalleryScreen> {
         .whereType<File>()
         .where((file) => file.path.endsWith('.jpg')));
 
-    // --- PERBAIKAN: Tambahkan return di sini ---
     return images;
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: backgroundDark,
+      backgroundColor: backgroundDark, // Pastikan warna ini ada di main.dart
       appBar: AppBar(
         title: const Text('Galeri'),
       ),
@@ -64,7 +63,9 @@ class _GalleryScreenState extends State<GalleryScreen> {
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(
-                child: CircularProgressIndicator(color: primaryYellow));
+                child: CircularProgressIndicator(
+                    color:
+                        primaryYellow)); // Pastikan warna ini ada di main.dart
           }
           if (snapshot.hasError ||
               !snapshot.hasData ||
@@ -74,13 +75,15 @@ class _GalleryScreenState extends State<GalleryScreen> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(Icons.photo_library_outlined,
-                      size: 80, color: accentGrey),
-                  // --- PERBAIKAN: Tambahkan const ---
-                  const SizedBox(height: 20),
+                      size: 80,
+                      color: accentGrey), // Pastikan warna ini ada di main.dart
+                  SizedBox(height: 20),
                   Text(
                     'Galeri masih kosong.',
                     textAlign: TextAlign.center,
-                    style: TextStyle(color: textDark, fontSize: 22),
+                    style: TextStyle(
+                        color: textDark,
+                        fontSize: 22), // Pastikan warna ini ada di main.dart
                   ),
                   Text(
                     'Hasil fotomu akan muncul di sini!',
@@ -114,7 +117,8 @@ class _GalleryScreenState extends State<GalleryScreen> {
                   return Card(
                     margin:
                         const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    color: backgroundLight,
+                    color:
+                        backgroundLight, // Pastikan warna ini ada di main.dart
                     elevation: 1,
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(15)),
@@ -143,6 +147,8 @@ class _GalleryScreenState extends State<GalleryScreen> {
 
                                 return GestureDetector(
                                   onTap: () {
+                                    // --- BAGIAN PERBAIKAN ---
+                                    // Menggunakan parameter 'imageFile' sesuai definisi PhotoViewerScreen
                                     Navigator.push(
                                       context,
                                       MaterialPageRoute(
