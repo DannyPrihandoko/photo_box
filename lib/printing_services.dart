@@ -1,3 +1,4 @@
+import 'dart:io'; // Tambahkan import dart:io
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/services.dart';
@@ -8,139 +9,134 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class PrinterServices {
   
-  // Key untuk penyimpanan lokal
   static const String _kMacAddressKey = 'selected_printer_mac';
 
-  // Cek apakah Bluetooth HP nyala
   Future<bool> get isBluetoothEnabled async => await PrintBluetoothThermal.bluetoothEnabled;
-
-  // Cek apakah sudah terhubung ke printer
   Future<bool> get isConnected async => await PrintBluetoothThermal.connectionStatus;
 
-  // Ambil daftar perangkat
   Future<List<BluetoothInfo>> getPairedPrinters() async {
     return await PrintBluetoothThermal.pairedBluetooths;
   }
 
-  // --- LOGIKA KONEKSI PINTAR ---
-
-  /// Mencoba connect ke printer yang tersimpan di memori
+  // --- LOGIKA KONEKSI ---
   Future<bool> autoConnect() async {
     final prefs = await SharedPreferences.getInstance();
     final String? savedMac = prefs.getString(_kMacAddressKey);
-
-    if (savedMac == null) return false; // Belum pernah setting printer
-
-    // Cek status dulu, kalau sudah connect, return true
+    if (savedMac == null) return false;
     if (await isConnected) return true;
-
-    // Coba connect
-    final bool success = await PrintBluetoothThermal.connect(macPrinterAddress: savedMac);
-    return success;
+    return await PrintBluetoothThermal.connect(macPrinterAddress: savedMac);
   }
 
-  /// Connect manual dari halaman Settings & Simpan MAC Address
   Future<bool> connectAndSave(String macAddress) async {
     final bool success = await PrintBluetoothThermal.connect(macPrinterAddress: macAddress);
-    
     if (success) {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_kMacAddressKey, macAddress);
     }
-    
     return success;
   }
 
-  /// Putus koneksi
   Future<void> disconnect() async {
     await PrintBluetoothThermal.disconnect;
   }
 
-  // --- TEST PRINT (Untuk Halaman Setting) ---
   Future<void> testPrint() async {
     if (!await isConnected) return;
-    
     final profile = await CapabilityProfile.load();
     final generator = Generator(PaperSize.mm80, profile);
     List<int> bytes = [];
-
     bytes += generator.reset();
-    bytes += generator.text('TEST PRINT SUKSES',
-        styles: const PosStyles(align: PosAlign.center, bold: true, height: PosTextSize.size2));
-    bytes += generator.text('Printer 80mm Siap!',
-        styles: const PosStyles(align: PosAlign.center));
+    bytes += generator.text('TEST PRINT SUKSES', styles: const PosStyles(align: PosAlign.center, bold: true, height: PosTextSize.size2));
+    bytes += generator.text('Printer Siap!', styles: const PosStyles(align: PosAlign.center));
     bytes += generator.feed(2);
-
     await PrintBluetoothThermal.writeBytes(bytes);
   }
 
-  // --- FUNGSI UTAMA CETAK GAMBAR ---
-  Future<bool> printPhotoStrip(ui.Image photoStripImage) async {
-    // 1. Pastikan terkoneksi
+  // --- BARU: PRINT DARI FILE (UNTUK GALERI) ---
+  Future<bool> printImageFromFile(File file) async {
     if (!await isConnected) {
       bool reconnected = await autoConnect();
       if (!reconnected) return false;
     }
 
     try {
-      // 2. Konversi ui.Image ke PNG Bytes
-      final ByteData? byteData = await photoStripImage.toByteData(format: ui.ImageByteFormat.png);
-      if (byteData == null) return false;
+      // 1. Baca file gambar
+      final Uint8List bytes = await file.readAsBytes();
       
-      final Uint8List pngBytes = byteData.buffer.asUint8List();
-      
-      // 3. Decode menggunakan library 'image'
-      img.Image? originalImage = img.decodePng(pngBytes);
+      // 2. Decode gambar (bisa JPG atau PNG)
+      img.Image? originalImage = img.decodeImage(bytes);
       if (originalImage == null) return false;
 
-      // 4. PROSES GAMBAR (Image Processing Pipeline)
-      
-      // A. Resize untuk Kertas 80mm
-      // Lebar efektif 80mm thermal biasanya 576 dots.
-      // Kita set 576 agar FULL WIDTH.
+      // 3. Proses Gambar (Resize -> BW -> Dither)
+      // Menggunakan lebar 576 untuk kertas 80mm
       img.Image resizedImage = img.copyResize(originalImage, width: 576);
-
-      // B. Grayscale (Hitam Putih)
       img.Image grayscaleImage = img.grayscale(resizedImage);
-
-      // C. Adjust Brightness & Contrast
-      // brightness: 1.2 (lebih cerah), contrast: 1.5 (lebih tajam)
+      
+      // Adjust agar hasil cetak lebih jelas
       img.Image adjustedImage = img.adjustColor(
         grayscaleImage, 
         brightness: 1.2, 
         contrast: 1.5
       );
 
-      // D. Dithering (Floyd-Steinberg)
+      // Dithering
       _applyFloydSteinbergDither(adjustedImage);
 
-      // 5. Kirim ke Printer
+      // 4. Kirim ke Printer
       final profile = await CapabilityProfile.load();
-      
-      // Pastikan Generator menggunakan PaperSize.mm80
+      final generator = Generator(PaperSize.mm80, profile);
+      List<int> printBytes = [];
+
+      printBytes += generator.reset();
+      printBytes += generator.setStyles(const PosStyles(align: PosAlign.center));
+      printBytes += generator.image(adjustedImage, align: PosAlign.center);
+      printBytes += generator.feed(3);
+      printBytes += generator.cut();
+
+      return await PrintBluetoothThermal.writeBytes(printBytes);
+    } catch (e) {
+      print("Error Print File: $e");
+      return false;
+    }
+  }
+
+  // --- PRINT DARI WIDGET (UNTUK PHOTOSTRIP CREATOR) ---
+  Future<bool> printPhotoStrip(ui.Image photoStripImage) async {
+    if (!await isConnected) {
+      bool reconnected = await autoConnect();
+      if (!reconnected) return false;
+    }
+
+    try {
+      final ByteData? byteData = await photoStripImage.toByteData(format: ui.ImageByteFormat.png);
+      if (byteData == null) return false;
+      final Uint8List pngBytes = byteData.buffer.asUint8List();
+      img.Image? originalImage = img.decodePng(pngBytes);
+      if (originalImage == null) return false;
+
+      img.Image resizedImage = img.copyResize(originalImage, width: 576);
+      img.Image grayscaleImage = img.grayscale(resizedImage);
+      img.Image adjustedImage = img.adjustColor(grayscaleImage, brightness: 1.2, contrast: 1.5);
+      _applyFloydSteinbergDither(adjustedImage);
+
+      final profile = await CapabilityProfile.load();
       final generator = Generator(PaperSize.mm80, profile);
       List<int> bytes = [];
 
       bytes += generator.reset();
-      
-      // PERBAIKAN ALIGNMENT: Set Center sebelum gambar
       bytes += generator.setStyles(const PosStyles(align: PosAlign.center));
-      
-      // Kirim gambar dengan parameter align center (jika didukung library)
-      // dan pastikan ukuran gambar sudah 576px agar otomatis memenuhi kertas
-      bytes += generator.image(adjustedImage, align: PosAlign.center); 
-      
+      bytes += generator.image(adjustedImage, align: PosAlign.center);
       bytes += generator.feed(3);
       bytes += generator.cut();
 
       return await PrintBluetoothThermal.writeBytes(bytes);
     } catch (e) {
-      print("Error Print: $e");
+      print("Error Print Widget: $e");
       return false;
     }
   }
 
-  // --- HELPER: Dithering Manual (Floyd-Steinberg) ---
+  // --- HELPER: Dithering ---
   void _applyFloydSteinbergDither(img.Image image) {
     final int width = image.width;
     final int height = image.height;
@@ -170,7 +166,6 @@ class PrinterServices {
       img.Pixel p = image.getPixel(x, y);
       double newValue = p.r + error;
       newValue = newValue.clamp(0, 255);
-      
       p.r = newValue;
       p.g = newValue;
       p.b = newValue;

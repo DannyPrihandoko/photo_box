@@ -1,15 +1,138 @@
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:photo_box/gallery_screen.dart';
-import 'package:photo_box/main.dart'; // Import untuk warna tema
+import 'package:photo_box/main.dart'; // Import tema
+import 'package:photo_box/printer_settings_screen.dart'; // Import Screen Printer
+import 'package:photo_box/screens/admin_setup_screen.dart'; // Import Setup Admin
+import 'package:photo_box/services/voucher_service.dart'; // Import Service Voucher
 import 'package:photo_box/session_selection_screen.dart';
-import 'package:photo_box/printer_settings_screen.dart'; // Pastikan file ini ada
 
-class WelcomeScreen extends StatelessWidget {
+class WelcomeScreen extends StatefulWidget {
   final CameraDescription camera;
   const WelcomeScreen({super.key, required this.camera});
 
-  // Widget untuk ikon smiley sederhana (Representasi :) )
+  @override
+  State<WelcomeScreen> createState() => _WelcomeScreenState();
+}
+
+class _WelcomeScreenState extends State<WelcomeScreen> {
+  final VoucherService _voucherService = VoucherService();
+  final TextEditingController _codeController = TextEditingController();
+  bool _isLoading = false;
+
+  @override
+  void dispose() {
+    _codeController.dispose();
+    super.dispose();
+  }
+
+  // --- LOGIKA VOUCHER ---
+  Future<void> _submitVoucher() async {
+    String code = _codeController.text.trim().toUpperCase();
+    if (code.isEmpty) return;
+
+    // 1. Cek apakah IP Admin sudah disetting
+    bool isConfigured = await _voucherService.isAdminConfigured();
+    if (!isConfigured) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Admin belum disetting! Hubungi petugas (Tekan tombol Remote di kiri atas)."),
+            backgroundColor: Colors.orange,
+          )
+        );
+      }
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    // 2. Verifikasi ke Server Admin via Wi-Fi
+    final result = await _voucherService.verifyVoucher(code);
+
+    setState(() => _isLoading = false);
+
+    if (mounted) {
+      if (result['valid'] == true) {
+        Navigator.pop(context); // Tutup Dialog
+        _codeController.clear();
+        
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+              builder: (context) => SessionSelectionScreen(camera: widget.camera)),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result['message'] ?? "Kode Salah / Kadaluarsa"), 
+            backgroundColor: Colors.red
+          )
+        );
+      }
+    }
+  }
+
+  void _showVoucherDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        title: const Text(
+          "Masukkan Kode Voucher", 
+          style: TextStyle(color: textDark, fontWeight: FontWeight.bold),
+          textAlign: TextAlign.center,
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _codeController,
+              autofocus: true,
+              textAlign: TextAlign.center,
+              textCapitalization: TextCapitalization.characters,
+              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, letterSpacing: 5, color: textDark),
+              decoration: const InputDecoration(
+                hintText: "A7X99",
+                hintStyle: TextStyle(color: Colors.grey, letterSpacing: 2),
+                border: OutlineInputBorder(),
+                filled: true,
+                fillColor: backgroundDark,
+                contentPadding: EdgeInsets.symmetric(vertical: 15),
+              ),
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              "Dapatkan kode dari kasir.",
+              style: TextStyle(color: accentGrey, fontSize: 12),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Batal", style: TextStyle(color: accentGrey)),
+          ),
+          ElevatedButton(
+            onPressed: _isLoading ? null : _submitVoucher,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: primaryYellow,
+              foregroundColor: textDark,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+            ),
+            child: _isLoading 
+              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: textDark, strokeWidth: 2))
+              : const Text("MULAI FOTO", style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- UI HELPERS ---
+
   Widget _buildSmileyIcon({double size = 150}) {
     return Stack(
       alignment: Alignment.center,
@@ -22,7 +145,6 @@ class WelcomeScreen extends StatelessWidget {
             shape: BoxShape.circle,
           ),
         ),
-        // Mata
         Positioned(
           top: size * 0.3,
           child: Row(
@@ -40,7 +162,6 @@ class WelcomeScreen extends StatelessWidget {
             ],
           ),
         ),
-        // Senyum (Bentuk setengah lingkaran menyerupai :) )
         Positioned(
           bottom: size * 0.25,
           child: Container(
@@ -48,8 +169,7 @@ class WelcomeScreen extends StatelessWidget {
             height: size * 0.25,
             decoration: BoxDecoration(
               color: textDark,
-              borderRadius:
-                  BorderRadius.vertical(bottom: Radius.circular(size * 0.25)),
+              borderRadius: BorderRadius.vertical(bottom: Radius.circular(size * 0.25)),
             ),
           ),
         ),
@@ -64,16 +184,14 @@ class WelcomeScreen extends StatelessWidget {
         bool isPortrait = orientation == Orientation.portrait;
 
         return Scaffold(
-          // Background putih bersih
           backgroundColor: backgroundLight,
           body: Stack(
             children: [
-              // Layout utama (Column untuk potret, Row untuk lanskap)
+              // Layout Utama
               SafeArea(
                 child: Center(
                   child: SingleChildScrollView(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 30, vertical: 40),
+                    padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 40),
                     child: isPortrait
                         ? _buildPortraitLayout(context)
                         : _buildLandscapeLayout(context),
@@ -81,39 +199,53 @@ class WelcomeScreen extends StatelessWidget {
                 ),
               ),
 
-              // --- TOMBOL SETTING PRINTER (KIRI ATAS) ---
+              // --- TOMBOL ADMIN SETUP (KIRI ATAS) ---
               Positioned(
                 top: 40,
                 left: 20,
                 child: IconButton(
-                  icon: const Icon(Icons.settings_bluetooth,
-                      color: accentGrey, size: 35),
-                  tooltip: 'Pengaturan Printer',
+                  icon: const Icon(Icons.settings_remote, color: accentGrey, size: 30),
+                  tooltip: 'Setup Koneksi Admin',
                   onPressed: () {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(
-                          builder: (context) => const PrinterSettingsScreen()),
+                      MaterialPageRoute(builder: (context) => const AdminSetupScreen()),
                     );
                   },
                 ),
               ),
 
-              // --- TOMBOL GALERI (KANAN ATAS) ---
+              // --- TOMBOL PRINTER & GALERI (KANAN ATAS) ---
               Positioned(
                 top: 40,
                 right: 20,
-                child: IconButton(
-                  icon: const Icon(Icons.photo_library_outlined,
-                      color: accentGrey, size: 35),
-                  tooltip: 'Galeri',
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (context) => const GalleryScreen()),
-                    );
-                  },
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Tombol Printer (BARU)
+                    IconButton(
+                      icon: const Icon(Icons.print, color: accentGrey, size: 30),
+                      tooltip: 'Setting Printer',
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const PrinterSettingsScreen()),
+                        );
+                      },
+                    ),
+                    const SizedBox(width: 10),
+                    // Tombol Galeri
+                    IconButton(
+                      icon: const Icon(Icons.photo_library_outlined, color: accentGrey, size: 35),
+                      tooltip: 'Lihat Galeri',
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const GalleryScreen()),
+                        );
+                      },
+                    ),
+                  ],
                 ),
               ),
 
@@ -126,7 +258,7 @@ class WelcomeScreen extends StatelessWidget {
                   'Created by danny © 2025',
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    color: accentGrey, // Warna abu-abu
+                    color: accentGrey,
                     fontSize: 14,
                   ),
                 ),
@@ -138,12 +270,11 @@ class WelcomeScreen extends StatelessWidget {
     );
   }
 
-  // Layout untuk mode Potret (HP)
   Widget _buildPortraitLayout(BuildContext context) {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        _buildSmileyIcon(size: 180), // Ukuran ikon disesuaikan
+        _buildSmileyIcon(size: 180),
         const SizedBox(height: 40),
         const Text(
           'Selamat Datang di',
@@ -167,17 +298,12 @@ class WelcomeScreen extends StatelessWidget {
         const SizedBox(height: 60),
         ElevatedButton(
           onPressed: () {
-            // --- PERBAIKAN DI SINI: Mengirim parameter camera ---
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                  builder: (context) => SessionSelectionScreen(camera: camera)),
-            );
+            // PANGGIL DIALOG VOUCHER SAAT KLIK MULAI
+            _showVoucherDialog();
           },
           style: ElevatedButton.styleFrom(
             padding: const EdgeInsets.symmetric(horizontal: 60, vertical: 20),
-            textStyle:
-                const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+            textStyle: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
           ),
           child: const Text('MULAI'),
         ),
@@ -193,7 +319,6 @@ class WelcomeScreen extends StatelessWidget {
     );
   }
 
-  // Layout untuk mode Lanskap (Tablet)
   Widget _buildLandscapeLayout(BuildContext context) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -229,19 +354,12 @@ class WelcomeScreen extends StatelessWidget {
               const SizedBox(height: 80),
               ElevatedButton(
                 onPressed: () {
-                  // --- PERBAIKAN DI SINI: Mengirim parameter camera ---
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (context) =>
-                            SessionSelectionScreen(camera: camera)),
-                  );
+                   // PANGGIL DIALOG VOUCHER SAAT KLIK MULAI
+                   _showVoucherDialog();
                 },
                 style: ElevatedButton.styleFrom(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 70, vertical: 25),
-                  textStyle: const TextStyle(
-                      fontSize: 28, fontWeight: FontWeight.bold),
+                  padding: const EdgeInsets.symmetric(horizontal: 70, vertical: 25),
+                  textStyle: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
                 ),
                 child: const Text('MULAI'),
               ),
