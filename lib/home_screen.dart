@@ -3,8 +3,9 @@ import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:photo_box/main.dart'; // Import untuk warna
-import 'package:photo_box/session_complete_screen.dart';
 import 'package:photo_box/preview_screen.dart';
+import 'package:photo_box/photostrip_creator_screen.dart'; 
+// PENTING: Baris import session_complete_screen.dart SUDAH DIHAPUS di sini
 
 class HomeScreen extends StatefulWidget {
   final CameraDescription camera;
@@ -25,12 +26,12 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   late CameraController _controller;
   late Future<void> _initializeControllerFuture;
-
+  
   int _currentTake = 1;
-  // Counter untuk jumlah retake yang sudah digunakan
-  int _retakesUsed = 0;
-  // Batas maksimal retake per sesi
-  final int _maxRetakes = 2;
+  
+  // Logika Retake (Sisa 2 kali)
+  int _retakesUsed = 0; 
+  final int _maxRetakes = 2; 
 
   final List<XFile> _takenImages = [];
   String _message = "SIAP-SIAP!";
@@ -63,7 +64,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void _startCountdown() {
     setState(() {
       _message = "SENYUM!";
-      _countdown = 3;
+      _countdown = 3; 
     });
 
     _countdownTimer?.cancel();
@@ -86,28 +87,28 @@ class _HomeScreenState extends State<HomeScreen> {
 
       if (!mounted) return;
 
-      // Cek apakah kuota retake masih ada
+      // Cek kuota retake
       bool canRetake = _retakesUsed < _maxRetakes;
 
+      // Navigasi ke Preview Screen
       final result = await Navigator.of(context).push(
         MaterialPageRoute(
           builder: (context) => PreviewScreen(
             imageFile: File(image.path),
-            allowRetake: canRetake, // Kirim status ke PreviewScreen
-            retakesRemaining:
-                _maxRetakes - _retakesUsed, // Opsional: untuk info UI
+            allowRetake: canRetake,
+            retakesRemaining: _maxRetakes - _retakesUsed,
           ),
         ),
       );
 
       if (result == PreviewAction.retake && canRetake) {
-        // Jika user memilih retake DAN kuota masih ada
+        // Jika User memilih Retake
         setState(() {
-          _retakesUsed++; // Kurangi kuota (tambah counter)
+          _retakesUsed++;
           _message = "ULANGI LAGI!";
           _showGetReady = true;
         });
-
+        
         Future.delayed(const Duration(seconds: 1), () {
           if (mounted) {
             setState(() => _showGetReady = false);
@@ -115,9 +116,11 @@ class _HomeScreenState extends State<HomeScreen> {
           }
         });
       } else {
-        // Jika user memilih lanjut (atau dipaksa lanjut karena retake habis)
+        // Jika User memilih Lanjut (atau retake habis)
         _takenImages.add(image);
+        
         if (_currentTake < widget.totalTakes) {
+          // Lanjut ke foto berikutnya
           setState(() {
             _currentTake++;
             _message = "FOTO BERIKUTNYA!";
@@ -130,11 +133,13 @@ class _HomeScreenState extends State<HomeScreen> {
             }
           });
         } else {
+          // --- SESI SELESAI: LANGSUNG KE PHOTOSTRIP CREATOR ---
+          // Kita bypass session_complete_screen
           if (!mounted) return;
           Navigator.of(context).pushReplacement(
             MaterialPageRoute(
-              builder: (context) => SessionCompleteScreen(
-                images: _takenImages,
+              builder: (context) => PhotostripCreatorScreen(
+                sessionImages: _takenImages, 
                 sessionId: widget.sessionId,
               ),
             ),
@@ -165,6 +170,7 @@ class _HomeScreenState extends State<HomeScreen> {
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.done &&
               _controller.value.isInitialized) {
+            
             final frameWidth =
                 isPortrait ? screenSize.width * 0.8 : screenSize.width * 0.5;
 
@@ -204,6 +210,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         alignment: Alignment.center,
                         children: [
                           CameraPreview(_controller),
+                          
                           Container(
                             color: Colors.black.withAlpha(50),
                             child: Center(
@@ -251,7 +258,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                 ),
-                // ... Bagian UI bawah tetap sama
                 Positioned(
                   bottom: isPortrait ? 30 : 40,
                   left: 0,
@@ -268,7 +274,6 @@ class _HomeScreenState extends State<HomeScreen> {
                             letterSpacing: 2),
                       ),
                       const SizedBox(height: 5),
-                      // Indikator sisa retake (Opsional)
                       Text(
                         "Sisa Retake: ${_maxRetakes - _retakesUsed}",
                         style: const TextStyle(color: accentGrey, fontSize: 12),

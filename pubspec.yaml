@@ -9,18 +9,34 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  camera: ^0.10.5+9 # Atau versi terbaru yang kompatibel
-  path_provider: ^2.0.12 # Atau versi terbaru yang kompatibel
-  image: ^4.1.3 # Atau versi terbaru yang kompatibel
-  flutter_blue_plus: ^1.31.17 # atau versi terbaru
-  esc_pos_utils_plus: ^2.0.4 # atau versi terbaru
-  printing: ^5.13.0 # atau versi terbaru
-  pdf: ^3.10.8 # atau versi terbaru
+  camera: ^0.11.3
+  screenshot: ^3.0.0
+  path_provider: ^2.0.12 
+  image: ^4.1.3          
+  image_gallery_saver_plus: ^4.0.1
+  image_picker: ^1.1.2
+  flutter_blue_plus: ^1.31.22 
+  esc_pos_utils_plus: ^2.0.4
+  # Untuk koneksi ke printer
+  print_bluetooth_thermal: ^1.1.0 
+  # Untuk manajemen permission (opsional tapi disarankan)
+  permission_handler: ^11.0.0
+  shared_preferences: ^2.2.2
+
+  
+  printing: ^5.14.0  
+  pdf: ^3.10.8      
+
+  # Default
+  cupertino_icons: ^1.0.6
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^3.0.0 # Atau versi terbaru yang kompatibel
+
+  # --- VERSI DIPERBARUI ---
+  flutter_lints: ^6.0.0
+  # ------------------------
 
 flutter:
   uses-material-design: true
