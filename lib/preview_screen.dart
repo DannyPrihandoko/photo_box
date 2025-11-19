@@ -2,11 +2,20 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:photo_box/main.dart'; // Import untuk warna tema
 
-enum PreviewAction { retake, continuePhoto }
+// Enum aksi: Ulangi atau Lanjut
+enum PreviewAction { retake, next }
 
 class PreviewScreen extends StatefulWidget {
   final File imageFile;
-  const PreviewScreen({super.key, required this.imageFile});
+  final bool allowRetake;
+  final int retakesRemaining;
+
+  const PreviewScreen({
+    super.key,
+    required this.imageFile,
+    this.allowRetake = true,
+    this.retakesRemaining = 0,
+  });
 
   @override
   State<PreviewScreen> createState() => _PreviewScreenState();
@@ -19,14 +28,15 @@ class _PreviewScreenState extends State<PreviewScreen>
   @override
   void initState() {
     super.initState();
+    // --- SETTING DURASI 10 DETIK ---
     _animationController =
-        AnimationController(vsync: this, duration: const Duration(seconds: 5))
-          ..forward(); // Animasi progress bar dimulai
+        AnimationController(vsync: this, duration: const Duration(seconds: 10))
+          ..forward(); // Mulai hitung mundur
+
     _animationController.addStatusListener((status) {
-      // Otomatis lanjut jika waktu habis
-      // Otomatis lanjut jika waktu habis
+      // Jika waktu habis (10 detik), otomatis lanjut
       if (status == AnimationStatus.completed && mounted) {
-        Navigator.of(context).pop(PreviewAction.continuePhoto);
+        Navigator.of(context).pop(PreviewAction.next);
       }
     });
   }
@@ -40,20 +50,26 @@ class _PreviewScreenState extends State<PreviewScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: backgroundLight, // Latar belakang putih
+      backgroundColor: backgroundLight,
       body: SafeArea(
         child: Column(
           children: [
-            // Progress bar di atas
-            // Progress bar di atas
-            LinearProgressIndicator(
-              value: _animationController.value,
-              backgroundColor: accentGrey.withAlpha(100), // Abu-abu transparan
-              valueColor:
-                  const AlwaysStoppedAnimation<Color>(primaryYellow), // Kuning
+            // Progress bar indikator waktu (10 detik)
+            AnimatedBuilder(
+              animation: _animationController,
+              builder: (context, child) {
+                return LinearProgressIndicator(
+                  value: 1.0 -
+                      _animationController.value, // Mundur dari penuh ke kosong
+                  backgroundColor: accentGrey.withAlpha(50),
+                  valueColor:
+                      const AlwaysStoppedAnimation<Color>(primaryYellow),
+                  minHeight: 6,
+                );
+              },
             ),
+
             Expanded(
-              // Pilih layout berdasarkan orientasi
               child: OrientationBuilder(
                 builder: (context, orientation) {
                   return orientation == Orientation.portrait
@@ -68,7 +84,7 @@ class _PreviewScreenState extends State<PreviewScreen>
     );
   }
 
-  // Layout untuk Potret (HP)
+  // Layout Potret (HP)
   Widget _buildPortraitLayout() {
     return Column(
       children: [
@@ -76,15 +92,13 @@ class _PreviewScreenState extends State<PreviewScreen>
           padding: EdgeInsets.only(top: 20.0),
           child: Text("BAGUS!",
               style: TextStyle(
-                  fontSize: 28, // Ukuran font disesuaikan
-                  color: textDark,
-                  fontWeight: FontWeight.bold)),
+                  fontSize: 28, color: textDark, fontWeight: FontWeight.bold)),
         ),
         Expanded(
           child: Padding(
-            padding: const EdgeInsets.all(20.0), // Padding disesuaikan
+            padding: const EdgeInsets.all(20.0),
             child: ClipRRect(
-                borderRadius: BorderRadius.circular(15), // Sudut lebih bulat
+                borderRadius: BorderRadius.circular(15),
                 child: Image.file(widget.imageFile, fit: BoxFit.contain)),
           ),
         ),
@@ -93,10 +107,12 @@ class _PreviewScreenState extends State<PreviewScreen>
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              // Tombol Ulangi (Outline)
-              Expanded(child: _buildRetakeButton()),
-              const SizedBox(width: 15),
-              // Tombol Lanjut (Elevated)
+              // Tombol Ulangi (Hanya muncul jika kuota retake masih ada)
+              if (widget.allowRetake) Expanded(child: _buildRetakeButton()),
+
+              if (widget.allowRetake) const SizedBox(width: 15),
+
+              // Tombol Lanjut
               Expanded(child: _buildContinueButton()),
             ],
           ),
@@ -105,7 +121,7 @@ class _PreviewScreenState extends State<PreviewScreen>
     );
   }
 
-  // Layout untuk Lanskap (Tablet)
+  // Layout Lanskap (Tablet)
   Widget _buildLandscapeLayout() {
     return Row(
       children: [
@@ -121,7 +137,7 @@ class _PreviewScreenState extends State<PreviewScreen>
         Expanded(
           flex: 2,
           child: Padding(
-            padding: const EdgeInsets.only(right: 30), // Padding kanan
+            padding: const EdgeInsets.only(right: 30),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -131,9 +147,14 @@ class _PreviewScreenState extends State<PreviewScreen>
                         color: textDark,
                         fontWeight: FontWeight.bold)),
                 const SizedBox(height: 50),
-                _buildRetakeButton(isLandscape: true), // Tombol lebih besar
-                const SizedBox(height: 30),
-                _buildContinueButton(isLandscape: true), // Tombol lebih besar
+
+                // Tombol Ulangi (Kondisional)
+                if (widget.allowRetake) ...[
+                  _buildRetakeButton(isLandscape: true),
+                  const SizedBox(height: 30),
+                ],
+
+                _buildContinueButton(isLandscape: true),
               ],
             ),
           ),
@@ -142,13 +163,14 @@ class _PreviewScreenState extends State<PreviewScreen>
     );
   }
 
-  // Widget untuk tombol Ulangi
   Widget _buildRetakeButton({bool isLandscape = false}) {
     return OutlinedButton.icon(
-      icon: Icon(Icons.replay, size: isLandscape ? 28 : 24),
-      label: Text('ULANGI', style: TextStyle(fontSize: isLandscape ? 20 : 18)),
+      icon: Icon(Icons.refresh, size: isLandscape ? 28 : 24),
+      label:
+          Text('ULANGI (${widget.retakesRemaining})', // Menampilkan sisa kuota
+              style: TextStyle(fontSize: isLandscape ? 20 : 18)),
       style: OutlinedButton.styleFrom(
-        minimumSize: Size(0, isLandscape ? 60 : 55), // Tinggi berbeda
+        minimumSize: Size(0, isLandscape ? 60 : 55),
         foregroundColor: textDark,
         side: const BorderSide(color: accentGrey, width: 1.5),
       ),
@@ -158,16 +180,17 @@ class _PreviewScreenState extends State<PreviewScreen>
     );
   }
 
-  // Widget untuk tombol Lanjut
   Widget _buildContinueButton({bool isLandscape = false}) {
     return ElevatedButton.icon(
       icon: Icon(Icons.check_circle_outline, size: isLandscape ? 28 : 24),
       label: Text('LANJUT', style: TextStyle(fontSize: isLandscape ? 20 : 18)),
       style: ElevatedButton.styleFrom(
-        minimumSize: Size(0, isLandscape ? 60 : 55), // Tinggi berbeda
+        backgroundColor: primaryYellow,
+        foregroundColor: textDark,
+        minimumSize: Size(0, isLandscape ? 60 : 55),
       ),
       onPressed: () {
-        Navigator.of(context).pop(PreviewAction.continuePhoto);
+        Navigator.of(context).pop(PreviewAction.next);
       },
     );
   }

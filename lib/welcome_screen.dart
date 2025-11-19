@@ -8,7 +8,7 @@ class WelcomeScreen extends StatelessWidget {
   final CameraDescription camera;
   const WelcomeScreen({super.key, required this.camera});
 
-  // Widget untuk ikon smiley sederhana
+  // Widget untuk ikon smiley sederhana (Representasi :) )
   Widget _buildSmileyIcon({double size = 150}) {
     return Stack(
       alignment: Alignment.center,
@@ -39,7 +39,7 @@ class WelcomeScreen extends StatelessWidget {
             ],
           ),
         ),
-        // Senyum
+        // Senyum (Bentuk setengah lingkaran menyerupai :) )
         Positioned(
           bottom: size * 0.25,
           child: Container(
@@ -136,7 +136,7 @@ class WelcomeScreen extends StatelessWidget {
           ),
         ),
         const Text(
-          'PHOTOBOX CERIA!',
+          'PHOTOBOX SENYUM!', // Teks diperbarui
           textAlign: TextAlign.center,
           style: TextStyle(
             fontSize: 42, // Ukuran font disesuaikan
@@ -200,7 +200,7 @@ class WelcomeScreen extends StatelessWidget {
                 ),
               ),
               const Text(
-                'PHOTOBOX CERIA!',
+                'PHOTOBOX SENYUM!', // Teks diperbarui
                 style: TextStyle(
                   fontSize: 64, // Ukuran font lebih besar
                   color: primaryYellow,
