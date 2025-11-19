@@ -3,9 +3,8 @@ import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:photo_box/main.dart'; // Import untuk warna
+import 'package:photo_box/session_complete_screen.dart';
 import 'package:photo_box/preview_screen.dart';
-import 'package:photo_box/photostrip_creator_screen.dart'; 
-// PENTING: Baris import session_complete_screen.dart SUDAH DIHAPUS di sini
 
 class HomeScreen extends StatefulWidget {
   final CameraDescription camera;
@@ -26,13 +25,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   late CameraController _controller;
   late Future<void> _initializeControllerFuture;
-  
   int _currentTake = 1;
-  
-  // Logika Retake (Sisa 2 kali)
-  int _retakesUsed = 0; 
-  final int _maxRetakes = 2; 
-
   final List<XFile> _takenImages = [];
   String _message = "SIAP-SIAP!";
   int _countdown = 3;
@@ -66,7 +59,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void _startCountdown() {
     setState(() {
       _message = "SENYUM!";
-      _countdown = 3; 
+      _countdown = 5;
     });
 
     _countdownTimer?.cancel();
@@ -89,28 +82,20 @@ class _HomeScreenState extends State<HomeScreen> {
 
       if (!mounted) return;
 
-      // Cek kuota retake
-      bool canRetake = _retakesUsed < _maxRetakes;
-
-      // Navigasi ke Preview Screen
       final result = await Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (context) => PreviewScreen(
-            imageFile: File(image.path),
-            allowRetake: canRetake,
-            retakesRemaining: _maxRetakes - _retakesUsed,
-          ),
+          // PERBAIKAN: Menggunakan image.path untuk PhotoViewerScreen
+          // Asumsi PhotoViewerScreen menerima String path, bukan File
+          // Jika PhotoViewerScreen menerima File, gunakan: File(image.path)
+          builder: (context) => PreviewScreen(imageFile: File(image.path)),
         ),
       );
 
-      if (result == PreviewAction.retake && canRetake) {
-        // Jika User memilih Retake
+      if (result == PreviewAction.retake) {
         setState(() {
-          _retakesUsed++;
           _message = "ULANGI LAGI!";
           _showGetReady = true;
         });
-        
         Future.delayed(const Duration(seconds: 1), () {
           if (mounted) {
             setState(() => _showGetReady = false);
@@ -119,11 +104,8 @@ class _HomeScreenState extends State<HomeScreen> {
           // PERBAIKAN: Kurung kurawal hilang di sini
         });
       } else {
-        // Jika User memilih Lanjut (atau retake habis)
         _takenImages.add(image);
-        
         if (_currentTake < widget.totalTakes) {
-          // Lanjut ke foto berikutnya
           setState(() {
             _currentTake++;
             _message = "FOTO BERIKUTNYA!";
@@ -137,13 +119,11 @@ class _HomeScreenState extends State<HomeScreen> {
             }
           });
         } else {
-          // --- SESI SELESAI: LANGSUNG KE PHOTOSTRIP CREATOR ---
-          // Kita bypass session_complete_screen
           if (!mounted) return;
           Navigator.of(context).pushReplacement(
             MaterialPageRoute(
-              builder: (context) => PhotostripCreatorScreen(
-                sessionImages: _takenImages, 
+              builder: (context) => SessionCompleteScreen(
+                images: _takenImages,
                 sessionId: widget.sessionId,
               ),
             ),
@@ -167,6 +147,10 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final screenSize = MediaQuery.of(context).size;
     final isPortrait = screenSize.height > screenSize.width;
+    final frameWidth =
+        isPortrait ? screenSize.width * 0.8 : screenSize.width * 0.5;
+    final frameHeight =
+        isPortrait ? screenSize.height * 0.5 : screenSize.height * 0.7;
 
     return Scaffold(
       backgroundColor: backgroundDark,
@@ -175,21 +159,6 @@ class _HomeScreenState extends State<HomeScreen> {
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.done &&
               _controller.value.isInitialized) {
-            
-            final frameWidth =
-                isPortrait ? screenSize.width * 0.8 : screenSize.width * 0.5;
-
-            final double cameraAspectRatio = _controller.value.aspectRatio;
-            final double visualAspectRatio;
-
-            if (isPortrait) {
-              visualAspectRatio = 1 / cameraAspectRatio;
-            } else {
-              visualAspectRatio = cameraAspectRatio;
-            }
-
-            final frameHeight = frameWidth / visualAspectRatio;
-
             return Stack(
               alignment: Alignment.center,
               children: [
@@ -217,8 +186,19 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: Stack(
                         alignment: Alignment.center,
                         children: [
-                          CameraPreview(_controller),
-                          
+                          SizedBox(
+                            width: frameWidth - 20,
+                            height: frameHeight - 20,
+                            child: FittedBox(
+                              fit: BoxFit.cover,
+                              child: SizedBox(
+                                width: _controller.value.previewSize!.height,
+                                height: _controller.value.previewSize!.width,
+                                child: CameraPreview(_controller),
+                              ),
+                            ),
+                          ),
+                          // Overlay pesan dan countdown
                           Container(
                             color: Colors.black.withAlpha(50),
                             child: Center(
@@ -268,27 +248,36 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 // Elemen UI Luar Bingkai
                 Positioned(
-                  bottom: isPortrait ? 30 : 40,
+                  top: isPortrait ? 40 : 50,
                   left: 0,
                   right: 0,
-                  child: Column(
+                  child: const Column(
                     children: [
                       // PERBAIKAN: Hapus Text() ganda
                       Text(
-                        "FOTO $_currentTake / ${widget.totalTakes}",
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
+                        "LIHAT KE KAMERA",
+                        style: TextStyle(
                             color: textDark,
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: 2),
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold),
                       ),
-                      const SizedBox(height: 5),
-                      Text(
-                        "Sisa Retake: ${_maxRetakes - _retakesUsed}",
-                        style: const TextStyle(color: accentGrey, fontSize: 12),
-                      ),
+                      Icon(Icons.arrow_downward, color: accentGrey, size: 24)
                     ],
+                  ),
+                ),
+                Positioned(
+                  bottom: isPortrait ? 30 : 40,
+                  left: 0,
+                  right: 0,
+                  child: Text(
+                    "FOTO $_currentTake / ${widget.totalTakes}",
+                    textAlign: TextAlign.center,
+                    // Hapus duplikat text dan textAlign
+                    style: const TextStyle(
+                        color: textDark,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 2),
                   ),
                 ),
               ],
