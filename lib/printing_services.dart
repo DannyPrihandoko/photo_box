@@ -8,7 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class PrinterServices {
   // Key untuk penyimpanan lokal
-  static const String _kMacAddressKey = 'saved_printer_mac';
+  static const String _kMacAddressKey = 'selected_printer_mac';
 
   // Cek apakah Bluetooth HP nyala
   Future<bool> get isBluetoothEnabled async =>
