@@ -12,7 +12,8 @@ class GalleryScreen extends StatefulWidget {
 }
 
 class _GalleryScreenState extends State<GalleryScreen> {
-  late Future<List<Directory>> _sessionFoldersFuture;
+  // PERBAIKAN: Menghapus 'late' dan membuatnya nullable (?) agar aman saat Hot Reload
+  Future<List<Directory>>? _sessionFoldersFuture;
 
   @override
   void initState() {
@@ -24,10 +25,12 @@ class _GalleryScreenState extends State<GalleryScreen> {
     final appDir = await getApplicationDocumentsDirectory();
     final allItems = appDir.listSync();
 
+    // Filter hanya folder yang namanya berupa angka (timestamp sesi)
     final sessionFolders = allItems.whereType<Directory>().where((dir) {
       return int.tryParse(dir.path.split(Platform.pathSeparator).last) != null;
     }).toList();
 
+    // Urutkan dari yang terbaru (descending)
     sessionFolders.sort((a, b) => b.path.compareTo(a.path));
     return sessionFolders;
   }
@@ -35,6 +38,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
   Future<List<File>> _getImagesFromSession(Directory sessionDir) async {
     List<File> images = [];
 
+    // Cek folder photostrips (jika ada)
     final photostripDir = Directory('${sessionDir.path}/photostrips');
     if (photostripDir.existsSync()) {
       images.addAll(photostripDir
@@ -43,6 +47,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
           .where((file) => file.path.endsWith('.png')));
     }
 
+    // Ambil foto original (.jpg) dari root folder sesi
     images.addAll(sessionDir
         .listSync()
         .whereType<File>()
@@ -64,9 +69,9 @@ class _GalleryScreenState extends State<GalleryScreen> {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(
                 child: CircularProgressIndicator(
-                    color:
-                        primaryYellow)); // Pastikan warna ini ada di main.dart
+                    color: primaryYellow)); // Pastikan warna ini ada di main.dart
           }
+          
           if (snapshot.hasError ||
               !snapshot.hasData ||
               snapshot.data!.isEmpty) {
@@ -104,6 +109,8 @@ class _GalleryScreenState extends State<GalleryScreen> {
               final sessionDir = sessionFolders[index];
               final sessionId =
                   sessionDir.path.split(Platform.pathSeparator).last;
+              
+              // Konversi nama folder (timestamp) ke tanggal yang bisa dibaca
               final sessionDate =
                   DateTime.fromMillisecondsSinceEpoch(int.parse(sessionId));
 
@@ -114,11 +121,11 @@ class _GalleryScreenState extends State<GalleryScreen> {
                     return const SizedBox.shrink();
                   }
                   final images = imageSnapshot.data!;
+                  
                   return Card(
                     margin:
                         const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    color:
-                        backgroundLight, // Pastikan warna ini ada di main.dart
+                    color: backgroundLight, // Pastikan warna ini ada di main.dart
                     elevation: 1,
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(15)),
@@ -147,8 +154,6 @@ class _GalleryScreenState extends State<GalleryScreen> {
 
                                 return GestureDetector(
                                   onTap: () {
-                                    // --- BAGIAN PERBAIKAN ---
-                                    // Menggunakan parameter 'imageFile' sesuai definisi PhotoViewerScreen
                                     Navigator.push(
                                       context,
                                       MaterialPageRoute(

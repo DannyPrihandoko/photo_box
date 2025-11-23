@@ -1,4 +1,6 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'printing_services.dart';
@@ -19,7 +21,16 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
   String? _selectedMac;
 
   // Settings Variables
-  int _paperSize = 576; // Default 80mm (576 dots)
+  // 1 = 58mm (384 dots)
+  // 2 = 80mm High (576 dots) - Default
+  // 3 = 80mm Medium (384 dots)
+  // 7 = 80mm Custom (350 dots) -> BARU
+  // 4 = 80mm Low (288 dots)
+  int _printerMode = 2; 
+  
+  // Filter Gambar: 1 = Dithering (Detail), 2 = Threshold (Kontras Tinggi/Cepat)
+  int _imageFilter = 1; 
+
   double _brightness = 1.2;
   double _contrast = 1.5;
   bool _isLoading = false;
@@ -28,16 +39,15 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
   void initState() {
     super.initState();
     _loadSettings();
-    _checkConnection();
-    _getPairedDevices();
+    _checkConnection(); 
   }
 
   // --- LOAD & SAVE SETTINGS ---
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
-      // 576 = 80mm, 384 = 58mm
-      _paperSize = prefs.getInt('printer_paper_width') ?? 576;
+      _printerMode = prefs.getInt('printer_mode_type') ?? 2;
+      _imageFilter = prefs.getInt('printer_image_filter') ?? 1;
       _brightness = prefs.getDouble('printer_brightness') ?? 1.2;
       _contrast = prefs.getDouble('printer_contrast') ?? 1.5;
       _selectedMac = prefs.getString('selected_printer_mac');
@@ -51,6 +61,46 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
     if (value is String) await prefs.setString(key, value);
   }
 
+  // --- LOGIKA PERMISSION ---
+  Future<bool> _checkAndRequestPermissions() async {
+    if (Platform.isAndroid) {
+      Map<Permission, PermissionStatus> statuses = await [
+        Permission.bluetoothScan,
+        Permission.bluetoothConnect,
+        Permission.location,
+      ].request();
+
+      final isConnectGranted = statuses[Permission.bluetoothConnect] == PermissionStatus.granted;
+      final isScanGranted = statuses[Permission.bluetoothScan] == PermissionStatus.granted;
+      final isLocationGranted = statuses[Permission.location] == PermissionStatus.granted;
+
+      if (isConnectGranted && isScanGranted) return true;
+      if (isLocationGranted && (await Permission.bluetooth.status.isGranted)) return true;
+      if (statuses[Permission.bluetoothConnect] == PermissionStatus.permanentlyDenied) return false;
+    }
+    return true;
+  }
+
+  void _showPermissionDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Izin Dibutuhkan"),
+        content: const Text("Aplikasi butuh izin Bluetooth untuk printer."),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Batal")),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              openAppSettings();
+            },
+            child: const Text("Buka Pengaturan"),
+          ),
+        ],
+      ),
+    );
+  }
+
   // --- PRINTER LOGIC ---
   Future<void> _checkConnection() async {
     bool status = await _printerService.isConnected;
@@ -58,12 +108,35 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
   }
 
   Future<void> _getPairedDevices() async {
-    final devices = await _printerService.getPairedPrinters();
-    setState(() => _pairedDevices = devices);
+    setState(() => _isLoading = true);
+    bool hasPermission = await _checkAndRequestPermissions();
+    if (!hasPermission) {
+      setState(() => _isLoading = false);
+      if (mounted) _showPermissionDialog();
+      return;
+    }
+
+    try {
+      final devices = await _printerService.getPairedPrinters();
+      setState(() => _pairedDevices = devices);
+      if (devices.isEmpty && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Tidak ada printer paired.")));
+      }
+    } catch (e) {
+      debugPrint("Error: $e");
+    } finally {
+      setState(() => _isLoading = false);
+    }
   }
 
   Future<void> _connectToDevice(String mac) async {
     setState(() => _isLoading = true);
+    if (!await _checkAndRequestPermissions()) {
+      setState(() => _isLoading = false);
+      if (mounted) _showPermissionDialog();
+      return;
+    }
+
     bool success = await _printerService.connectAndSave(mac);
     setState(() {
       _isConnected = success;
@@ -71,15 +144,10 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
       _isLoading = false;
     });
 
-    if (success) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Terhubung ke Printer!")),
-      );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text("Gagal menghubungkan."), backgroundColor: Colors.red),
-      );
+    if (success && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Terhubung!"), backgroundColor: Colors.green));
+    } else if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Gagal."), backgroundColor: Colors.red));
     }
   }
 
@@ -95,8 +163,7 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
         title: const Text("Pengaturan Printer"),
         backgroundColor: Colors.white,
         elevation: 1,
-        titleTextStyle: const TextStyle(
-            color: Colors.black, fontSize: 18, fontWeight: FontWeight.bold),
+        titleTextStyle: const TextStyle(color: Colors.black, fontSize: 18, fontWeight: FontWeight.bold),
         iconTheme: const IconThemeData(color: Colors.black),
       ),
       body: _isLoading
@@ -108,11 +175,12 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
                 const SizedBox(height: 16),
                 _buildPaperSettingsSection(),
                 const SizedBox(height: 16),
+                _buildFilterSection(),
+                const SizedBox(height: 16),
                 _buildQualitySection(),
                 const SizedBox(height: 24),
                 ElevatedButton.icon(
-                  onPressed:
-                      _isConnected ? () => _printerService.testPrint() : null,
+                  onPressed: _isConnected ? () => _printerService.testPrint() : null,
                   icon: const Icon(Icons.print),
                   label: const Text("Test Print"),
                   style: ElevatedButton.styleFrom(
@@ -137,51 +205,33 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
           children: [
             Row(
               children: [
-                Icon(Icons.bluetooth,
-                    color: _isConnected ? Colors.green : Colors.grey),
+                Icon(Icons.bluetooth, color: _isConnected ? Colors.green : Colors.grey),
                 const SizedBox(width: 10),
                 Text(
                   _isConnected ? "Status: TERHUBUNG" : "Status: TERPUTUS",
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: _isConnected ? Colors.green : Colors.red,
-                  ),
+                  style: TextStyle(fontWeight: FontWeight.bold, color: _isConnected ? Colors.green : Colors.red),
                 ),
                 const Spacer(),
                 if (_isConnected)
-                  TextButton(
-                    onPressed: _disconnect,
-                    child: const Text("Putuskan",
-                        style: TextStyle(color: Colors.red)),
-                  )
+                  TextButton(onPressed: _disconnect, child: const Text("Putuskan", style: TextStyle(color: Colors.red)))
                 else
-                  TextButton(
-                    onPressed: _getPairedDevices,
-                    child: const Text("Refresh"),
-                  ),
+                  TextButton(onPressed: _getPairedDevices, child: const Text("Scan")),
               ],
             ),
             const Divider(),
-            const Text("Pilih Perangkat Paired:",
-                style: TextStyle(fontSize: 12, color: Colors.grey)),
-            const SizedBox(height: 8),
             if (_pairedDevices.isEmpty)
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 8.0),
-                child: Text(
-                    "Tidak ada perangkat Bluetooth yang ditemukan.\nPastikan Bluetooth nyala & sudah pairing di setting HP."),
+                child: Text("List kosong. Pastikan printer sudah pairing di Setting Bluetooth HP."),
               )
             else
               ..._pairedDevices.map((device) => ListTile(
-                    // PERBAIKAN DI SINI: Menghapus operator '??' karena device.name tidak null
-                    title: Text(
-                        device.name.isEmpty ? "Unknown Device" : device.name),
+                    title: Text(device.name.isEmpty ? "Unknown" : device.name),
                     subtitle: Text(device.macAdress),
                     trailing: (_selectedMac == device.macAdress && _isConnected)
                         ? const Icon(Icons.check_circle, color: Colors.green)
                         : const Icon(Icons.link),
                     onTap: () => _connectToDevice(device.macAdress),
-                    contentPadding: EdgeInsets.zero,
                     dense: true,
                   )),
           ],
@@ -199,36 +249,106 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text("Ukuran Kertas",
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            const Text("Resolusi & Ukuran Kertas", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: RadioListTile<int>(
-                    title: const Text("58mm"),
-                    subtitle: const Text("(384 dots)"),
-                    value: 384,
-                    groupValue: _paperSize,
-                    onChanged: (val) {
-                      setState(() => _paperSize = val!);
-                      _saveSetting('printer_paper_width', val);
-                    },
-                  ),
-                ),
-                Expanded(
-                  child: RadioListTile<int>(
-                    title: const Text("80mm"),
-                    subtitle: const Text("(576 dots)"),
-                    value: 576,
-                    groupValue: _paperSize,
-                    onChanged: (val) {
-                      setState(() => _paperSize = val!);
-                      _saveSetting('printer_paper_width', val);
-                    },
-                  ),
-                ),
-              ],
+            
+            RadioListTile<int>(
+              title: const Text("80mm High (Default)"),
+              subtitle: const Text("Kualitas Terbaik (576 dots)"),
+              value: 2,
+              groupValue: _printerMode,
+              onChanged: (val) { setState(() => _printerMode = val!); _saveSetting('printer_mode_type', val); },
+            ),
+
+            RadioListTile<int>(
+              title: const Text("80mm Medium (384 dots)"),
+              subtitle: const Text("Standard"),
+              value: 3,
+              groupValue: _printerMode,
+              onChanged: (val) { setState(() => _printerMode = val!); _saveSetting('printer_mode_type', val); },
+            ),
+
+            // --- OPSI BARU 350 DOTS ---
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.blue.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: RadioListTile<int>(
+                title: const Text("80mm Custom (350 dots)"),
+                subtitle: const Text("Resolusi Menengah"),
+                value: 7,
+                groupValue: _printerMode,
+                onChanged: (val) { setState(() => _printerMode = val!); _saveSetting('printer_mode_type', val); },
+              ),
+            ),
+            // ---------------------------
+
+            RadioListTile<int>(
+              title: const Text("80mm Low (288 dots)"),
+              subtitle: const Text("Resolusi Rendah - Cepat"),
+              value: 4,
+              groupValue: _printerMode,
+              onChanged: (val) { setState(() => _printerMode = val!); _saveSetting('printer_mode_type', val); },
+            ),
+            
+            const Divider(),
+            
+            RadioListTile<int>(
+              title: const Text("Kertas 58mm"),
+              value: 1,
+              groupValue: _printerMode,
+              onChanged: (val) { setState(() => _printerMode = val!); _saveSetting('printer_mode_type', val); },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFilterSection() {
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text("Gaya & Filter Gambar", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            const SizedBox(height: 4),
+            const Text(
+              "Gunakan 'Hitam Putih Tegas' jika proses print macet/lambat.",
+              style: TextStyle(fontSize: 11, color: Colors.grey),
+            ),
+            const SizedBox(height: 10),
+            
+            RadioListTile<int>(
+              title: const Text("Standard (Dithering)"),
+              subtitle: const Text("Ada gradasi abu-abu (titik-titik). Lebih lambat."),
+              value: 1,
+              groupValue: _imageFilter,
+              onChanged: (val) { 
+                setState(() => _imageFilter = val!); 
+                _saveSetting('printer_image_filter', val); 
+              },
+            ),
+
+            Container(
+               decoration: BoxDecoration(
+                color: Colors.amber.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: RadioListTile<int>(
+                title: const Text("Hitam Putih Tegas (Threshold)"),
+                subtitle: const Text("Tanpa abu-abu. Kontras tinggi & LEBIH CEPAT."),
+                value: 2,
+                groupValue: _imageFilter,
+                onChanged: (val) { 
+                  setState(() => _imageFilter = val!); 
+                  _saveSetting('printer_image_filter', val); 
+                },
+              ),
             ),
           ],
         ),
@@ -245,69 +365,28 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text("Kualitas Gambar",
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            const Text("Kecerahan & Kontras", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             const SizedBox(height: 16),
-
-            // Brightness Slider
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text("Kecerahan (Brightness)"),
-                Text(_brightness.toStringAsFixed(1)),
-              ],
+              children: [const Text("Kecerahan"), Text(_brightness.toStringAsFixed(1))],
             ),
             Slider(
-              value: _brightness,
-              min: 0.5,
-              max: 2.5,
-              divisions: 20,
+              value: _brightness, min: 0.5, max: 2.5, divisions: 20,
               label: _brightness.toStringAsFixed(1),
-              onChanged: (val) {
-                setState(() => _brightness = val);
-              },
+              onChanged: (val) => setState(() => _brightness = val),
               onChangeEnd: (val) => _saveSetting('printer_brightness', val),
             ),
-
-            // Contrast Slider
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text("Kontras (Contrast)"),
-                Text(_contrast.toStringAsFixed(1)),
-              ],
+              children: [const Text("Kontras"), Text(_contrast.toStringAsFixed(1))],
             ),
             Slider(
-              value: _contrast,
-              min: 0.5,
-              max: 2.5,
-              divisions: 20,
+              value: _contrast, min: 0.5, max: 2.5, divisions: 20,
               label: _contrast.toStringAsFixed(1),
-              onChanged: (val) {
-                setState(() => _contrast = val);
-              },
+              onChanged: (val) => setState(() => _contrast = val),
               onChangeEnd: (val) => _saveSetting('printer_contrast', val),
             ),
-
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                  color: Colors.amber.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8)),
-              child: const Row(
-                children: [
-                  Icon(Icons.info_outline, color: Colors.amber, size: 16),
-                  SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      "Default: Brightness 1.2, Contrast 1.5\nNaikkan kontras jika hasil pudar.",
-                      style: TextStyle(fontSize: 11, color: Colors.black54),
-                    ),
-                  ),
-                ],
-              ),
-            )
           ],
         ),
       ),

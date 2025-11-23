@@ -81,6 +81,17 @@ class _PhotostripCreatorScreenState extends State<PhotostripCreatorScreen> {
     });
   }
 
+  // --- HELPER: Tanggal Format Indonesia ---
+  String _getIndonesianDate() {
+    final now = DateTime.now();
+    const List<String> months = [
+      'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+      'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+    ];
+    // Contoh Output: 22 November 2025
+    return '${now.day} ${months[now.month - 1]} ${now.year}';
+  }
+
   ///
   /// FUNGSI UTAMA: SAVE FILE & PRINT KE BLUETOOTH
   ///
@@ -133,9 +144,13 @@ class _PhotostripCreatorScreenState extends State<PhotostripCreatorScreen> {
              const SnackBar(content: Text('Sukses mencetak!'), backgroundColor: Colors.green)
           );
           
-          // Opsional: Kembali ke home otomatis setelah cetak sukses?
-          // await Future.delayed(const Duration(seconds: 2));
-          // Navigator.of(context).popUntil((route) => route.isFirst);
+          // --- LOGIKA BARU: PINDAH KE HALAMAN AWAL ---
+          // Delay sejenak agar user bisa membaca pesan sukses
+          await Future.delayed(const Duration(seconds: 2));
+          if (mounted) {
+             // Pop sampai route pertama (Menu Awal / Welcome Screen)
+             Navigator.of(context).popUntil((route) => route.isFirst);
+          }
         }
       }
 
@@ -179,7 +194,7 @@ class _PhotostripCreatorScreenState extends State<PhotostripCreatorScreen> {
     );
   }
 
-  // --- DIALOG KONFIRMASI KELUAR (BARU) ---
+  // --- DIALOG KONFIRMASI KELUAR ---
   void _showExitDialog() {
     showDialog(
       context: context,
@@ -298,7 +313,7 @@ class _PhotostripCreatorScreenState extends State<PhotostripCreatorScreen> {
 
                       const SizedBox(height: 15),
 
-                      // --- TOMBOL KEMBALI KE WELCOME (BARU) ---
+                      // --- TOMBOL KEMBALI KE WELCOME ---
                       SizedBox(
                         width: double.infinity,
                         height: 50,
@@ -340,19 +355,25 @@ class _PhotostripCreatorScreenState extends State<PhotostripCreatorScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text('PHOTOBOX', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Colors.black)),
-              const SizedBox(height: 10),
+              // --- HEADER BARU: SENYUM & TANGGAL ---
+              const Text(
+                'SENYUM', 
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Colors.black)
+              ),
+              const SizedBox(height: 4),
+              Text(
+                _getIndonesianDate(), // Menggunakan helper tanggal Indo
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black54)
+              ),
+              const SizedBox(height: 12),
+              // -------------------------------------
               
               if (_selectedLayout == PhotostripLayout.strip2)
                 _build2StripSlots()
               else
                 _build1StripSlot(),
               
-              const SizedBox(height: 10),
-              Text(
-                DateTime.now().toString().substring(0, 16), 
-                style: const TextStyle(fontSize: 10, color: Colors.grey)
-              ),
+              // Footer tanggal lama dihapus agar tidak duplikat
             ],
           ),
         ),

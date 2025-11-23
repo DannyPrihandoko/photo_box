@@ -8,19 +8,17 @@ import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class PrinterServices {
+  
   static const String _kMacAddressKey = 'selected_printer_mac';
 
-  // --- STATUS PRINTER ---
-  Future<bool> get isBluetoothEnabled async =>
-      await PrintBluetoothThermal.bluetoothEnabled;
-  Future<bool> get isConnected async =>
-      await PrintBluetoothThermal.connectionStatus;
+  // --- STATUS ---
+  Future<bool> get isConnected async => await PrintBluetoothThermal.connectionStatus;
 
   Future<List<BluetoothInfo>> getPairedPrinters() async {
     return await PrintBluetoothThermal.pairedBluetooths;
   }
 
-  // --- LOGIKA KONEKSI ---
+  // --- KONEKSI ---
   Future<bool> autoConnect() async {
     final prefs = await SharedPreferences.getInstance();
     final String? savedMac = prefs.getString(_kMacAddressKey);
@@ -30,8 +28,7 @@ class PrinterServices {
   }
 
   Future<bool> connectAndSave(String macAddress) async {
-    final bool success =
-        await PrintBluetoothThermal.connect(macPrinterAddress: macAddress);
+    final bool success = await PrintBluetoothThermal.connect(macPrinterAddress: macAddress);
     if (success) {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_kMacAddressKey, macAddress);
@@ -46,34 +43,25 @@ class PrinterServices {
   Future<void> testPrint() async {
     if (!await isConnected) return;
     final profile = await CapabilityProfile.load();
-    final generator = Generator(PaperSize.mm80, profile);
+    final generator = Generator(PaperSize.mm80, profile); 
     List<int> bytes = [];
     bytes += generator.reset();
-    bytes += generator.text('TEST PRINT SUKSES',
-        styles: const PosStyles(
-            align: PosAlign.center, bold: true, height: PosTextSize.size2));
-    bytes += generator.text('Printer Siap!',
-        styles: const PosStyles(align: PosAlign.center));
+    bytes += generator.text('TEST PRINT SUKSES', styles: const PosStyles(align: PosAlign.center, bold: true));
+    bytes += generator.text('Printer Siap!', styles: const PosStyles(align: PosAlign.center));
     bytes += generator.feed(2);
     await PrintBluetoothThermal.writeBytes(bytes);
   }
 
-  // --- PRINT DARI FILE (UNTUK GALERI) ---
+  // --- PRINT IMAGE ---
   Future<bool> printImageFromFile(File file) async {
     if (!await isConnected) {
       bool reconnected = await autoConnect();
       if (!reconnected) return false;
     }
-
     try {
-      // 1. Baca file gambar
       final Uint8List bytes = await file.readAsBytes();
-
-      // 2. Decode gambar
       img.Image? originalImage = img.decodeImage(bytes);
       if (originalImage == null) return false;
-
-      // 3. Proses & Print
       return await _processAndPrintImage(originalImage);
     } catch (e) {
       print("Error Print File: $e");
@@ -81,21 +69,17 @@ class PrinterServices {
     }
   }
 
-  // --- PRINT DARI WIDGET (UNTUK PHOTOSTRIP CREATOR) ---
   Future<bool> printPhotoStrip(ui.Image photoStripImage) async {
     if (!await isConnected) {
       bool reconnected = await autoConnect();
       if (!reconnected) return false;
     }
-
     try {
-      final ByteData? byteData =
-          await photoStripImage.toByteData(format: ui.ImageByteFormat.png);
+      final ByteData? byteData = await photoStripImage.toByteData(format: ui.ImageByteFormat.png);
       if (byteData == null) return false;
       final Uint8List pngBytes = byteData.buffer.asUint8List();
       img.Image? originalImage = img.decodePng(pngBytes);
       if (originalImage == null) return false;
-
       return await _processAndPrintImage(originalImage);
     } catch (e) {
       print("Error Print Widget: $e");
@@ -103,82 +87,101 @@ class PrinterServices {
     }
   }
 
-  // --- LOGIKA UTAMA: PROSES & CHUNK PRINTING ---
+  // --- CORE LOGIC ---
   Future<bool> _processAndPrintImage(img.Image originalImage) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-
-      // 1. AMBIL SETTING DARI HALAMAN PENGATURAN
-      // Default: 576 (80mm), Brightness 1.2, Contrast 1.5
-      final int targetWidth = prefs.getInt('printer_paper_width') ?? 576;
+      
+      final int printerMode = prefs.getInt('printer_mode_type') ?? 2;
+      final int imageFilter = prefs.getInt('printer_image_filter') ?? 1;
       final double brightness = prefs.getDouble('printer_brightness') ?? 1.2;
       final double contrast = prefs.getDouble('printer_contrast') ?? 1.5;
 
       final profile = await CapabilityProfile.load();
-      // Sesuaikan generator dengan ukuran kertas (58mm atau 80mm)
-      final generator = Generator(
-          targetWidth == 384 ? PaperSize.mm58 : PaperSize.mm80, profile);
+      
+      Generator generator;
+      int targetWidth;
 
-      // 2. RESIZE GAMBAR
-      // Mengikuti lebar kertas yang dipilih user
-      img.Image resizedImage =
-          img.copyResize(originalImage, width: targetWidth);
-
-      // 3. GRAYSCALE & ADJUST COLOR
-      img.Image grayscaleImage = img.grayscale(resizedImage);
-
-      // Menggunakan nilai brightness/contrast dari setting
-      img.Image adjustedImage = img.adjustColor(grayscaleImage,
-          brightness: brightness, contrast: contrast);
-
-      // 4. DITHERING (Floyd-Steinberg)
-      _applyFloydSteinbergDither(adjustedImage);
-
-      // 5. KIRIM GAMBAR SECARA BERTAHAP (CHUNKING)
-      // Ini solusi untuk mencegah buffer overflow dan garis putih
-
-      await PrintBluetoothThermal.writeBytes(generator.reset());
-      await PrintBluetoothThermal.writeBytes(
-          generator.setStyles(const PosStyles(align: PosAlign.center)));
-
-      const int chunkHeight = 100; // Tinggi potongan per kirim
-      int printedHeight = 0;
-
-      while (printedHeight < adjustedImage.height) {
-        // Hitung sisa tinggi
-        int remaining = adjustedImage.height - printedHeight;
-        int currentHeight = remaining > chunkHeight ? chunkHeight : remaining;
-
-        // Potong (Crop) bagian gambar saat ini
-        img.Image chunk = img.copyCrop(adjustedImage,
-            x: 0,
-            y: printedHeight,
-            width: adjustedImage.width,
-            height: currentHeight);
-
-        // Generate bytes dan kirim
-        List<int> chunkBytes = generator.image(chunk, align: PosAlign.center);
-        await PrintBluetoothThermal.writeBytes(chunkBytes);
-
-        // PENTING: Delay agar buffer printer punya waktu memproses
-        await Future.delayed(const Duration(milliseconds: 100));
-
-        printedHeight += currentHeight;
+      switch (printerMode) {
+        case 1: // 58mm
+          generator = Generator(PaperSize.mm58, profile);
+          targetWidth = 384;
+          break;
+        case 3: // 80mm Medium
+          generator = Generator(PaperSize.mm80, profile);
+          targetWidth = 384; 
+          break;
+        case 7: // 80mm Custom (350 dots) - MODE BARU
+          generator = Generator(PaperSize.mm80, profile);
+          targetWidth = 350; 
+          break;
+        case 4: // 80mm Low
+          generator = Generator(PaperSize.mm80, profile);
+          targetWidth = 288; 
+          break;
+        case 2: // 80mm High (Default)
+        default:
+          generator = Generator(PaperSize.mm80, profile);
+          targetWidth = 576; 
+          break;
       }
 
-      // Akhiri dengan feed dan cut
-      List<int> finalBytes = [];
-      finalBytes += generator.feed(3);
-      finalBytes += generator.cut();
+      // 1. Resize
+      img.Image resizedImage = img.copyResize(originalImage, width: targetWidth);
+      
+      // 2. Grayscale
+      img.Image grayscaleImage = img.grayscale(resizedImage);
+      
+      // 3. Adjust Color
+      img.Image adjustedImage = img.adjustColor(
+        grayscaleImage, 
+        brightness: brightness, 
+        contrast: contrast
+      );
 
-      return await PrintBluetoothThermal.writeBytes(finalBytes);
+      // 4. APPLY FILTER
+      if (imageFilter == 2) {
+        // Mode Threshold (Cepat & Kontras Tinggi)
+        _applyThreshold(adjustedImage);
+      } else {
+        // Mode Dither (Standard)
+        _applyFloydSteinbergDither(adjustedImage);
+      }
+
+      // 5. KIRIM SEKALIGUS (Tanpa Chunking)
+      List<int> bytes = [];
+      bytes += generator.reset();
+      bytes += generator.setStyles(const PosStyles(align: PosAlign.center));
+      bytes += generator.image(adjustedImage, align: PosAlign.center);
+      bytes += generator.feed(3);
+      bytes += generator.cut();
+      
+      return await PrintBluetoothThermal.writeBytes(bytes);
+
     } catch (e) {
       print("Error Processing/Printing Image: $e");
       return false;
     }
   }
 
-  // --- HELPER: ALGORITMA DITHERING ---
+  // --- HELPER: Thresholding ---
+  void _applyThreshold(img.Image image) {
+    final int width = image.width;
+    final int height = image.height;
+
+    for (int y = 0; y < height; y++) {
+      for (int x = 0; x < width; x++) {
+        img.Pixel pixel = image.getPixel(x, y);
+        final double lum = pixel.r.toDouble();
+        final double newValue = lum < 128 ? 0 : 255;
+        pixel.r = newValue;
+        pixel.g = newValue;
+        pixel.b = newValue;
+      }
+    }
+  }
+
+  // --- HELPER: Dithering ---
   void _applyFloydSteinbergDither(img.Image image) {
     final int width = image.width;
     final int height = image.height;
@@ -188,7 +191,7 @@ class PrinterServices {
         img.Pixel pixel = image.getPixel(x, y);
         final double oldPixel = pixel.r.toDouble();
         final double newPixel = oldPixel < 128 ? 0 : 255;
-
+        
         pixel.r = newPixel;
         pixel.g = newPixel;
         pixel.b = newPixel;
