@@ -20,6 +20,9 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
   final TextEditingController _codeController = TextEditingController();
   bool _isLoading = false;
 
+  // --- KODE RAHASIA ADMIN ---
+  static const String _adminBypassCode = "se1nyu2m3";
+
   @override
   void dispose() {
     _codeController.dispose();
@@ -28,10 +31,43 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
 
   // --- LOGIKA VOUCHER ---
   Future<void> _submitVoucher() async {
-    String code = _codeController.text.trim().toUpperCase();
-    if (code.isEmpty) return;
+    // Ambil input mentah (tanpa ubah ke huruf besar dulu) untuk cek password admin
+    String rawInput = _codeController.text.trim();
+    if (rawInput.isEmpty) return;
 
-    // 1. Cek apakah IP Admin sudah disetting
+    // -----------------------------------------------------------
+    // 1. CEK KODE ADMIN (BYPASS)
+    // -----------------------------------------------------------
+    if (rawInput == _adminBypassCode) {
+      if (mounted) {
+        Navigator.pop(context); // Tutup Dialog
+        _codeController.clear();
+        
+        // Langsung masuk sebagai ADMIN
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+              builder: (context) => SessionSelectionScreen(
+                camera: widget.camera,
+                voucherCode: "ADMIN", // Nama folder khusus
+              )),
+        );
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Login Admin Berhasil! (Bypass Server)"), 
+            backgroundColor: Colors.blueAccent
+          )
+        );
+      }
+      return; // Stop di sini, jangan lanjut cek server
+    }
+    // -----------------------------------------------------------
+
+    // Ubah ke Huruf Besar untuk Voucher Biasa (misal: a7x99 -> A7X99)
+    String code = rawInput.toUpperCase();
+
+    // 2. Cek apakah IP Admin sudah disetting
     bool isConfigured = await _voucherService.isAdminConfigured();
     if (!isConfigured) {
       if (mounted) {
@@ -47,7 +83,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
 
     setState(() => _isLoading = true);
 
-    // 2. Verifikasi ke Server Admin via Wi-Fi
+    // 3. Verifikasi ke Server Admin via Wi-Fi
     final result = await _voucherService.verifyVoucher(code);
 
     setState(() => _isLoading = false);
@@ -57,10 +93,14 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
         Navigator.pop(context); // Tutup Dialog
         _codeController.clear();
         
+        // Kirim kode voucher ke halaman berikutnya
         Navigator.push(
           context,
           MaterialPageRoute(
-              builder: (context) => SessionSelectionScreen(camera: widget.camera)),
+              builder: (context) => SessionSelectionScreen(
+                camera: widget.camera,
+                voucherCode: code, // Mengirim kode voucher
+              )),
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -92,10 +132,11 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
               controller: _codeController,
               autofocus: true,
               textAlign: TextAlign.center,
-              textCapitalization: TextCapitalization.characters,
+              // Matikan textCapitalization agar bisa input huruf kecil untuk password admin
+              textCapitalization: TextCapitalization.none, 
               style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, letterSpacing: 5, color: textDark),
               decoration: const InputDecoration(
-                hintText: "A7X99",
+                hintText: "Kode",
                 hintStyle: TextStyle(color: Colors.grey, letterSpacing: 2),
                 border: OutlineInputBorder(),
                 filled: true,
@@ -222,7 +263,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Tombol Printer (BARU)
+                    // Tombol Printer
                     IconButton(
                       icon: const Icon(Icons.print, color: accentGrey, size: 30),
                       tooltip: 'Setting Printer',

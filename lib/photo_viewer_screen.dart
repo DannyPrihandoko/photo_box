@@ -1,7 +1,8 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:photo_box/printing_services.dart'; // Import Service Printer
-import 'package:photo_box/main.dart'; // Import warna tema (primaryYellow, textDark)
+import 'package:photo_box/main.dart'; // Import warna tema
+import 'package:share_plus/share_plus.dart'; // WAJIB: Import Share Plus
 
 class PhotoViewerScreen extends StatefulWidget {
   final File imageFile;
@@ -14,6 +15,19 @@ class PhotoViewerScreen extends StatefulWidget {
 
 class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
   bool _isPrinting = false;
+
+  // --- FUNGSI SHARE (BARU) ---
+  Future<void> _shareImage() async {
+    // Cek apakah file benar-benar ada sebelum dishare
+    if (await widget.imageFile.exists()) {
+      // Membuka Share Sheet bawaan HP (Android/iOS)
+      // User nanti akan memilih icon "WhatsApp" dari daftar aplikasi yang muncul
+      await Share.shareXFiles(
+        [XFile(widget.imageFile.path)],
+        text: 'Ini hasil foto saya dari PhotoBox Senyum! 📸',
+      );
+    }
+  }
 
   Future<void> _printImage() async {
     setState(() => _isPrinting = true);
@@ -42,12 +56,22 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
       appBar: AppBar(
         backgroundColor: Colors.black,
         elevation: 0,
+        // Mengganti icon close dengan arrow_back agar lebih standar navigasi Android
         leading: IconButton(
-          icon: const Icon(Icons.close, color: Colors.white),
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        // --- TOMBOL PRINT BARU ---
         actions: [
+          // --- TOMBOL SHARE (BARU) ---
+          IconButton(
+            icon: const Icon(Icons.share, color: Colors.white),
+            tooltip: "Kirim Foto (WhatsApp/Lainnya)",
+            onPressed: _shareImage, // Panggil fungsi share
+          ),
+          
+          const SizedBox(width: 10), // Jarak antar tombol
+
+          // --- TOMBOL PRINT ---
           Padding(
             padding: const EdgeInsets.only(right: 10),
             child: _isPrinting 

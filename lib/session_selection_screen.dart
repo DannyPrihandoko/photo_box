@@ -5,17 +5,25 @@ import 'package:photo_box/main.dart'; // Import untuk warna tema
 
 class SessionSelectionScreen extends StatelessWidget {
   final CameraDescription camera;
+  final String voucherCode; // <--- Variabel baru ditambahkan
 
-  const SessionSelectionScreen({super.key, required this.camera});
+  // Update Constructor untuk menerima voucherCode
+  const SessionSelectionScreen({
+    super.key, 
+    required this.camera,
+    required this.voucherCode, // <--- Wajib diisi
+  });
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: backgroundDark, // Menggunakan warna dari main.dart
       appBar: AppBar(
-        title: const Text("Pilih Paket Foto"),
+        // Menampilkan Kode Voucher di Judul
+        title: Text("Voucher: $voucherCode", style: const TextStyle(color: textDark)),
         automaticallyImplyLeading: false, // Menghilangkan tombol back otomatis
         centerTitle: true,
+        backgroundColor: primaryYellow,
       ),
       body: Center(
         child: Padding(
@@ -64,17 +72,17 @@ class SessionSelectionScreen extends StatelessWidget {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: InkWell(
         onTap: () {
-          // Membuat Session ID unik berdasarkan waktu sekarang
-          final String sessionId =
-              DateTime.now().millisecondsSinceEpoch.toString();
+          // Kita gunakan Kode Voucher sebagai Session ID agar folder rapi
+          final String sessionId = voucherCode;
 
-          // Navigasi ke HomeScreen dengan jumlah foto yang dipilih
+          // Navigasi ke HomeScreen dengan membawa voucherCode
           Navigator.of(context).push(
             MaterialPageRoute(
               builder: (context) => HomeScreen(
                 camera: camera,
                 totalTakes: totalTakes,
                 sessionId: sessionId,
+                voucherCode: voucherCode, // <--- Teruskan kode ke Home
               ),
             ),
           );

@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:nsd/nsd.dart';
-import 'package:photo_box/main.dart'; // Pastikan path import ini benar sesuai struktur folder Anda
-import 'package:photo_box/services/voucher_service.dart'; // Pastikan path import ini benar
+import 'package:photo_box/main.dart'; // Import tema warna
+import 'package:photo_box/services/voucher_service.dart';
+import 'package:photo_box/screens/frame_management_screen.dart'; // Import Screen Frame
 
 class AdminSetupScreen extends StatefulWidget {
   const AdminSetupScreen({super.key});
@@ -13,7 +14,7 @@ class AdminSetupScreen extends StatefulWidget {
 class _AdminSetupScreenState extends State<AdminSetupScreen> {
   final VoucherService _voucherService = VoucherService();
   
-  // Perbaikan Error 4: Tambahkan 'final'
+  // List untuk menampung service yang ditemukan
   final List<Service> _foundServices = []; 
   
   bool _isScanning = false;
@@ -21,38 +22,50 @@ class _AdminSetupScreenState extends State<AdminSetupScreen> {
 
   @override
   void dispose() {
-    // Perbaikan Error 1: Cek null sebelum stopDiscovery
-    if (_discovery != null) {
-      stopDiscovery(_discovery!);
-    }
+    // Stop discovery saat keluar halaman untuk menghemat resource
+    _stopDiscovery();
     super.dispose();
   }
 
+  Future<void> _stopDiscovery() async {
+    if (_discovery != null) {
+      await stopDiscovery(_discovery!);
+      _discovery = null;
+    }
+  }
+
   Future<void> _startScan() async {
+    // Reset state
+    await _stopDiscovery();
+    if (!mounted) return;
+
     setState(() {
       _isScanning = true;
       _foundServices.clear();
     });
 
     try {
+      // Mulai mencari service dengan tipe _http._tcp
       _discovery = await startDiscovery('_http._tcp');
       _discovery!.addServiceListener((service, status) {
         if (status == ServiceStatus.found) {
-          if (service.name == 'PhotoBoxAdmin') {
+          // Filter hanya service yang bernama 'PhotoBoxAdmin' (jika Anda set nama ini di server)
+          // Atau tampilkan semua untuk debugging
+          // if (service.name == 'PhotoBoxAdmin') { 
             setState(() {
-              // Cek duplikat
-              if (!_foundServices.any((s) => s.name == service.name)) {
+              // Cek duplikat agar tidak muncul berkali-kali
+              final index = _foundServices.indexWhere((s) => s.name == service.name);
+              if (index == -1) {
                  _foundServices.add(service);
               }
             });
-          }
+          // }
         }
       });
     } catch (e) {
-      // Perbaikan Error 5: Cek mounted sebelum pakai context
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error Scan: $e"))
+          SnackBar(content: Text("Error Scan: $e"), backgroundColor: Colors.red)
         );
       }
       setState(() => _isScanning = false);
@@ -62,17 +75,20 @@ class _AdminSetupScreenState extends State<AdminSetupScreen> {
   Future<void> _saveConfig(Service service) async {
     String? ip = service.host;
 
-    // Perbaikan Error 2 & 3: Cek null safety pada service.addresses
+    // Logika Fallback: Jika host null, ambil dari list addresses
     if (ip == null && service.addresses != null && service.addresses!.isNotEmpty) {
        ip = service.addresses!.first.address;
     }
 
     if (ip != null) {
-      await _voucherService.saveAdminConfig(ip, service.port!);
+      // Simpan IP dan Port ke SharedPreferences
+      await _voucherService.saveAdminConfig(ip, service.port ?? 8080);
+      
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text("Tersambung ke Admin ($ip)!"), backgroundColor: Colors.green)
         );
+        // Kembali ke layar sebelumnya setelah sukses
         Navigator.pop(context);
       }
     } else {
@@ -89,59 +105,107 @@ class _AdminSetupScreenState extends State<AdminSetupScreen> {
     return Scaffold(
       backgroundColor: backgroundDark,
       appBar: AppBar(
-        title: const Text("Setup Koneksi Admin"), 
+        title: const Text("Admin & Setup"), 
         backgroundColor: backgroundDark, 
-        foregroundColor: Colors.white
+        foregroundColor: Colors.white,
+        elevation: 0,
       ),
-      body: Padding(
+      body: SingleChildScrollView( // Pakai ScrollView agar aman di layar kecil
         padding: const EdgeInsets.all(20.0),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Icon(Icons.wifi_tethering, size: 80, color: accentGrey),
-            const SizedBox(height: 20),
-            const Text(
-              "Pastikan Tablet ini dan Tablet Admin\nterhubung ke Wi-Fi yang sama.",
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.white70),
+            // --- HEADER ---
+            Center(
+              child: Column(
+                children: const [
+                  Icon(Icons.settings_remote, size: 60, color: accentGrey),
+                  SizedBox(height: 10),
+                  Text(
+                    "Pengaturan Kiosk",
+                    style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 30),
+
+            // --- MENU 1: MANAJEMEN FRAME (FITUR BARU) ---
+            const Text("KONTEN", style: TextStyle(color: primaryYellow, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
+            const SizedBox(height: 10),
+            Card(
+              color: Colors.white10,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              child: ListTile(
+                leading: const Icon(Icons.crop_original, color: Colors.blueAccent, size: 30),
+                title: const Text("Manajemen Frame", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                subtitle: const Text("Upload frame custom untuk photostrip", style: TextStyle(color: Colors.white70, fontSize: 12)),
+                trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white54, size: 16),
+                onTap: () {
+                  Navigator.push(
+                    context, 
+                    MaterialPageRoute(builder: (context) => const FrameManagementScreen())
+                  );
+                },
+              ),
+            ),
+
+            const SizedBox(height: 30),
+
+            // --- MENU 2: KONEKSI SERVER ---
+            const Text("KONEKSI SERVER", style: TextStyle(color: primaryYellow, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
+            const SizedBox(height: 10),
             
+            const Text(
+              "Pastikan Tablet ini dan Admin Server terhubung ke Wi-Fi yang sama.",
+              style: TextStyle(color: Colors.white54, fontSize: 12),
+            ),
+            const SizedBox(height: 10),
+
             ElevatedButton.icon(
               onPressed: _isScanning ? null : _startScan,
               icon: _isScanning 
-                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) 
-                : const Icon(Icons.search),
-              label: Text(_isScanning ? "MENCARI ADMIN..." : "CARI OTOMATIS"),
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: textDark)) 
+                : const Icon(Icons.wifi_find),
+              label: Text(_isScanning ? "MENCARI SERVER..." : "CARI SERVER OTOMATIS"),
               style: ElevatedButton.styleFrom(
                 backgroundColor: primaryYellow, 
                 foregroundColor: textDark,
-                minimumSize: const Size(double.infinity, 50)
+                minimumSize: const Size(double.infinity, 50),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
             ),
 
             const SizedBox(height: 20),
-            const Align(alignment: Alignment.centerLeft, child: Text("Ditemukan:", style: TextStyle(color: Colors.white))),
             
-            Expanded(
-              child: ListView.builder(
-                itemCount: _foundServices.length,
-                itemBuilder: (context, index) {
-                  final s = _foundServices[index];
-                  return Card(
-                    color: Colors.white10,
-                    child: ListTile(
-                      leading: const Icon(Icons.computer, color: Colors.white),
-                      title: Text(s.name ?? "Unknown", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                      subtitle: Text("${s.host ?? 'IP Detecting...'} : ${s.port}", style: const TextStyle(color: Colors.grey)),
-                      trailing: ElevatedButton(
-                        onPressed: () => _saveConfig(s),
-                        style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-                        child: const Text("Sambungkan"),
+            if (_foundServices.isNotEmpty)
+              const Text("Ditemukan:", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            
+            // List Service yang ditemukan
+            ListView.builder(
+              shrinkWrap: true, // Agar bisa dalam SingleChildScrollView
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: _foundServices.length,
+              itemBuilder: (context, index) {
+                final s = _foundServices[index];
+                return Card(
+                  color: Colors.white10,
+                  margin: const EdgeInsets.only(top: 8),
+                  child: ListTile(
+                    leading: const Icon(Icons.computer, color: Colors.greenAccent),
+                    title: Text(s.name ?? "Unknown Device", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    subtitle: Text("${s.host ?? 'IP Detecting...'} : ${s.port}", style: const TextStyle(color: Colors.grey)),
+                    trailing: ElevatedButton(
+                      onPressed: () => _saveConfig(s),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green,
+                        padding: const EdgeInsets.symmetric(horizontal: 10)
                       ),
+                      child: const Text("Sambungkan", style: TextStyle(fontSize: 12)),
                     ),
-                  );
-                },
-              ),
+                  ),
+                );
+              },
             )
           ],
         ),

@@ -24,6 +24,7 @@ dependencies:
   shared_preferences: ^2.2.2
   nsd: ^4.0.0
   http: ^1.2.0
+  share_plus: ^10.0.0
 
   
   printing: ^5.14.0  

@@ -5,18 +5,20 @@ import 'package:flutter/material.dart';
 import 'package:photo_box/main.dart'; // Import untuk warna
 import 'package:photo_box/preview_screen.dart';
 import 'package:photo_box/photostrip_creator_screen.dart'; 
-// PENTING: Baris import session_complete_screen.dart SUDAH DIHAPUS di sini
+import 'package:image_gallery_saver_plus/image_gallery_saver_plus.dart'; // WAJIB: Import untuk simpan ke galeri
 
 class HomeScreen extends StatefulWidget {
   final CameraDescription camera;
   final int totalTakes;
   final String sessionId;
+  final String voucherCode; // Tambahan: Menerima Kode Voucher
 
   const HomeScreen({
     super.key,
     required this.camera,
     required this.totalTakes,
     required this.sessionId,
+    required this.voucherCode, // Wajib diisi
   });
 
   @override
@@ -90,7 +92,7 @@ class _HomeScreenState extends State<HomeScreen> {
       // Cek kuota retake
       bool canRetake = _retakesUsed < _maxRetakes;
 
-      // Navigasi ke Preview Screen
+      // Navigasi ke Preview Screen untuk konfirmasi hasil foto
       final result = await Navigator.of(context).push(
         MaterialPageRoute(
           builder: (context) => PreviewScreen(
@@ -116,7 +118,17 @@ class _HomeScreenState extends State<HomeScreen> {
           }
         });
       } else {
-        // Jika User memilih Lanjut (atau retake habis)
+        // Jika User memilih LANJUT (Foto Diterima)
+        
+        // --- 1. SIMPAN FOTO MENTAH KE GALERI ---
+        // Simpan dengan nama: KODEVOUCHER_raw_URUTAN (misal: A7X99_raw_1)
+        await ImageGallerySaverPlus.saveFile(
+          image.path, 
+          name: "${widget.voucherCode}_raw_$_currentTake"
+        );
+        debugPrint("Foto mentah ke-$_currentTake tersimpan di galeri.");
+        // ---------------------------------------
+
         _takenImages.add(image);
         
         if (_currentTake < widget.totalTakes) {
@@ -133,14 +145,14 @@ class _HomeScreenState extends State<HomeScreen> {
             }
           });
         } else {
-          // --- SESI SELESAI: LANGSUNG KE PHOTOSTRIP CREATOR ---
-          // Kita bypass session_complete_screen
+          // --- SESI SELESAI: KE EDITOR ---
           if (!mounted) return;
           Navigator.of(context).pushReplacement(
             MaterialPageRoute(
               builder: (context) => PhotostripCreatorScreen(
                 sessionImages: _takenImages, 
                 sessionId: widget.sessionId,
+                voucherCode: widget.voucherCode, // Teruskan Kode Voucher
               ),
             ),
           );
@@ -264,6 +276,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   right: 0,
                   child: Column(
                     children: [
+                      // Menampilkan info foto ke berapa dan Kode Voucher
                       Text(
                         "FOTO $_currentTake / ${widget.totalTakes}",
                         textAlign: TextAlign.center,
@@ -275,7 +288,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                       const SizedBox(height: 5),
                       Text(
-                        "Sisa Retake: ${_maxRetakes - _retakesUsed}",
+                        "Voucher: ${widget.voucherCode} | Sisa Retake: ${_maxRetakes - _retakesUsed}",
                         style: const TextStyle(color: accentGrey, fontSize: 12),
                       ),
                     ],
