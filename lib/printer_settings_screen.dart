@@ -1,14 +1,14 @@
 import 'dart:io';
 import 'dart:typed_data';
-import 'dart:async'; // Untuk Future
-import 'package:flutter/foundation.dart'; // Untuk compute (Isolate)
+import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
-import 'package:image_picker/image_picker.dart'; // WAJIB: Import Image Picker
+import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:image/image.dart' as img; // Import library pengolah gambar
+import 'package:image/image.dart' as img;
 import 'printing_services.dart';
 
 class PrinterSettingsScreen extends StatefulWidget {
@@ -21,39 +21,38 @@ class PrinterSettingsScreen extends StatefulWidget {
 class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
   final PrinterServices _printerService = PrinterServices();
 
-  // State Variables
+  // State Variables Thermal
   bool _isConnected = false;
   List<BluetoothInfo> _pairedDevices = [];
   String? _selectedMac;
 
   // Settings Variables
-  int _printerMode = 2; // Default 80mm High
-  int _imageFilter = 1; // Default Dithering
-
-  double _brightness = 1.0; // Default Normal
-  double _contrast = 1.0;   // Default Normal
+  int _printerMode = 2;
+  int _imageFilter = 1;
+  double _brightness = 1.0;
+  double _contrast = 1.0;
   bool _isLoading = false;
 
-  // --- PREVIEW VARIABLES ---
-  img.Image? _originalImage; 
-  Uint8List? _previewBytes;  
+  // Preview Variables
+  img.Image? _originalImage;
+  Uint8List? _previewBytes;
   bool _isGeneratingPreview = false;
-  final ImagePicker _picker = ImagePicker(); // Instance Image Picker
+  final ImagePicker _picker = ImagePicker();
 
   @override
   void initState() {
     super.initState();
     _loadSettings();
-    _checkConnection(); 
-    _loadSampleImage(); // Load default awal (Logo)
+    _checkConnection();
+    _loadSampleImage();
   }
 
-  // --- 1. LOAD GAMBAR ---
-  
-  // A. Load Default dari Aset (Fallback)
+  // --- IMAGE LOADING & PROCESSING ---
+
   Future<void> _loadSampleImage() async {
     try {
-      final ByteData data = await rootBundle.load('assets/icon/logo/icon_launcher.png');
+      final ByteData data =
+          await rootBundle.load('assets/icon/logo/icon_launcher.png');
       final Uint8List bytes = data.buffer.asUint8List();
       _processLoadedImage(bytes);
     } catch (e) {
@@ -61,7 +60,6 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
     }
   }
 
-  // B. Ambil dari Galeri (FITUR BARU)
   Future<void> _pickImageFromGallery() async {
     try {
       final XFile? photo = await _picker.pickImage(source: ImageSource.gallery);
@@ -71,33 +69,22 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
       }
     } catch (e) {
       debugPrint("Error picking image: $e");
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Gagal mengambil gambar dari galeri"), backgroundColor: Colors.red),
-        );
-      }
     }
   }
 
-  // Helper untuk memproses bytes gambar mentah menjadi objek Image
   void _processLoadedImage(Uint8List bytes) {
     final image = img.decodeImage(bytes);
     if (image != null) {
-      // Resize agar preview enteng (lebar 300px cukup untuk layar HP)
-      // Kita simpan _originalImage untuk diproses ulang saat slider digeser
       _originalImage = img.copyResize(image, width: 300);
-      _updatePreview(); 
+      _updatePreview();
     }
   }
 
-  // --- 2. UPDATE PREVIEW (Background Process) ---
   Future<void> _updatePreview() async {
     if (_originalImage == null || _isGeneratingPreview) return;
-
     if (mounted) setState(() => _isGeneratingPreview = true);
 
     try {
-      // Jalankan proses berat di thread terpisah (compute) agar UI tidak macet
       final resultBytes = await compute(_processImage, {
         'image': _originalImage!,
         'brightness': _brightness,
@@ -117,80 +104,60 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
     }
   }
 
-  // --- 3. LOGIKA PENGOLAHAN GAMBAR (Static Function) ---
   static Uint8List _processImage(Map<String, dynamic> params) {
-    // Clone gambar agar aslinya tidak rusak
-    img.Image image = img.Image.from(params['image'] as img.Image); 
+    img.Image image = img.Image.from(params['image'] as img.Image);
     double brightness = params['brightness'];
     double contrast = params['contrast'];
     int filter = params['filter'];
 
-    // A. Atur Brightness & Contrast (Manual Pixel Loop)
+    // Brightness & Contrast
     if (brightness != 1.0 || contrast != 1.0) {
-       for (var pixel in image) {
-         num r = pixel.r;
-         num g = pixel.g;
-         num b = pixel.b;
+      for (var pixel in image) {
+        num r = pixel.r * brightness;
+        num g = pixel.g * brightness;
+        num b = pixel.b * brightness;
 
-         // Apply Brightness
-         r *= brightness;
-         g *= brightness;
-         b *= brightness;
+        r = ((r - 128) * contrast + 128).clamp(0, 255);
+        g = ((g - 128) * contrast + 128).clamp(0, 255);
+        b = ((b - 128) * contrast + 128).clamp(0, 255);
 
-         // Apply Contrast
-         r = ((r - 128) * contrast + 128).clamp(0, 255);
-         g = ((g - 128) * contrast + 128).clamp(0, 255);
-         b = ((b - 128) * contrast + 128).clamp(0, 255);
-
-         pixel.r = r;
-         pixel.g = g;
-         pixel.b = b;
-       }
+        pixel.r = r;
+        pixel.g = g;
+        pixel.b = b;
+      }
     }
 
-    // B. Convert ke Grayscale
+    // Grayscale
     img.grayscale(image);
 
-    // C. Simulasi Efek Thermal (1-bit Black & White)
+    // Dithering vs Threshold
     if (filter == 1) {
-      // Dithering (Ordered Dither - Bayer 2x2)
       const List<List<int>> bayerMatrix = [
-        [  1,  3 ],
-        [  4,  2 ]
+        [1, 3],
+        [4, 2]
       ];
-      
       for (int y = 0; y < image.height; y++) {
         for (int x = 0; x < image.width; x++) {
           final pixel = image.getPixel(x, y);
           final lum = img.getLuminance(pixel);
-          
           final val = (lum / 255) * 5;
           final threshold = bayerMatrix[y % 2][x % 2];
-          
-          if (val < threshold) {
-            image.setPixelRgb(x, y, 0, 0, 0); // Hitam
-          } else {
-            image.setPixelRgb(x, y, 255, 255, 255); // Putih
-          }
+          image.setPixelRgb(x, y, val < threshold ? 0 : 255,
+              val < threshold ? 0 : 255, val < threshold ? 0 : 255);
         }
       }
-
     } else {
-      // Thresholding (Hitam Putih Tegas)
       for (var pixel in image) {
         final lum = img.getLuminance(pixel);
-        if (lum < 128) {
-          pixel.r = 0; pixel.g = 0; pixel.b = 0;
-        } else {
-          pixel.r = 255; pixel.g = 255; pixel.b = 255;
-        }
+        final val = lum < 128 ? 0 : 255;
+        pixel.r = pixel.g = pixel.b = val;
       }
     }
 
     return Uint8List.fromList(img.encodePng(image));
   }
 
-  // --- LOAD & SAVE SETTINGS ---
+  // --- SETTINGS ---
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
@@ -210,7 +177,7 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
     if (value is String) await prefs.setString(key, value);
   }
 
-  // --- LOGIKA PERMISSION ---
+  // --- BLUETOOTH & PERMISSION ---
   Future<bool> _checkAndRequestPermissions() async {
     if (Platform.isAndroid) {
       Map<Permission, PermissionStatus> statuses = await [
@@ -219,39 +186,14 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
         Permission.location,
       ].request();
 
-      final isConnectGranted = statuses[Permission.bluetoothConnect] == PermissionStatus.granted;
-      final isScanGranted = statuses[Permission.bluetoothScan] == PermissionStatus.granted;
-      final isLocationGranted = statuses[Permission.location] == PermissionStatus.granted;
-
-      if (isConnectGranted && isScanGranted) return true; 
-      if (isLocationGranted) return true;
-      
-      return false;
+      return (statuses[Permission.bluetoothConnect] ==
+                  PermissionStatus.granted &&
+              statuses[Permission.bluetoothScan] == PermissionStatus.granted) ||
+          statuses[Permission.location] == PermissionStatus.granted;
     }
     return true;
   }
 
-  void _showPermissionDialog() {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text("Izin Dibutuhkan"),
-        content: const Text("Aplikasi butuh izin Bluetooth & Lokasi untuk mencari printer."),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Batal")),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              openAppSettings();
-            },
-            child: const Text("Buka Pengaturan"),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // --- PRINTER LOGIC ---
   Future<void> _checkConnection() async {
     bool status = await _printerService.isConnected;
     setState(() => _isConnected = status);
@@ -259,19 +201,13 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
 
   Future<void> _getPairedDevices() async {
     setState(() => _isLoading = true);
-    bool hasPermission = await _checkAndRequestPermissions();
-    if (!hasPermission) {
+    if (!await _checkAndRequestPermissions()) {
       setState(() => _isLoading = false);
-      if (mounted) _showPermissionDialog();
       return;
     }
-
     try {
       final devices = await _printerService.getPairedPrinters();
       setState(() => _pairedDevices = devices);
-      if (devices.isEmpty && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Tidak ada printer paired.")));
-      }
     } catch (e) {
       debugPrint("Error: $e");
     } finally {
@@ -281,27 +217,12 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
 
   Future<void> _connectToDevice(String mac) async {
     setState(() => _isLoading = true);
-    if (!await _checkAndRequestPermissions()) {
-      setState(() => _isLoading = false);
-      if (mounted) _showPermissionDialog();
-      return;
-    }
-
     bool success = await _printerService.connectAndSave(mac);
     setState(() {
       _isConnected = success;
       _selectedMac = mac;
       _isLoading = false;
     });
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(success ? "Terhubung!" : "Gagal terhubung."),
-          backgroundColor: success ? Colors.green : Colors.red
-        )
-      );
-    }
   }
 
   Future<void> _disconnect() async {
@@ -309,59 +230,116 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
     setState(() => _isConnected = false);
   }
 
-  // --- WIDGET HELPER: Custom Radio ---
-  Widget _buildCustomRadio({
-    required String title,
-    String? subtitle,
-    required int value,
-    required int groupValue,
-    required Function(int) onChanged,
-  }) {
-    final bool isSelected = value == groupValue;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: InkWell(
-        onTap: () => onChanged(value),
-        borderRadius: BorderRadius.circular(8),
-        child: Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: isSelected ? Colors.blue.withOpacity(0.1) : Colors.transparent,
-            border: Border.all(
-              color: isSelected ? Colors.blue : Colors.grey.withOpacity(0.3)
-            ),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Row(
+  // ==========================================
+  // FITUR EPSON (FLOW MEMILIH MODE)
+  // ==========================================
+  void _showEpsonPrintOptionDialog() {
+    if (_originalImage == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Pilih gambar terlebih dahulu!")));
+      return;
+    }
+
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) {
+        return Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
-                color: isSelected ? Colors.blue : Colors.grey,
+              const Text("Pilih Mode Cetak (Epson)",
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 20),
+              ListTile(
+                leading: const Icon(Icons.photo, color: Colors.blue, size: 40),
+                title: const Text("Cetak Foto Normal"),
+                subtitle: const Text("Full page / Fit to paper."),
+                onTap: () {
+                  Navigator.pop(context);
+                  _executePrintEpson(isStruk: false);
+                },
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                        color: Colors.black87
-                      ),
-                    ),
-                    if (subtitle != null) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        subtitle,
-                        style: const TextStyle(fontSize: 12, color: Colors.grey),
-                      ),
-                    ]
-                  ],
-                ),
+              const Divider(),
+              ListTile(
+                leading:
+                    const Icon(Icons.receipt, color: Colors.orange, size: 40),
+                title: const Text("Cetak Struk Foto"),
+                subtitle: const Text("Layout struk dengan tanggal."),
+                onTap: () {
+                  Navigator.pop(context);
+                  _executePrintEpson(isStruk: true);
+                },
               ),
             ],
           ),
+        );
+      },
+    );
+  }
+
+  Future<void> _executePrintEpson({required bool isStruk}) async {
+    try {
+      setState(() => _isLoading = true);
+      // Encode gambar asli (warna) ke PNG
+      final pngBytes = img.encodePng(_originalImage!);
+      // Kirim ke service
+      await _printerService.printBytesToEpson(Uint8List.fromList(pngBytes),
+          isStrukMode: isStruk);
+    } catch (e) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text("Error: $e")));
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  // --- WIDGET HELPER ---
+  Widget _buildCustomRadio(
+      {required String title,
+      String? subtitle,
+      required int value,
+      required int groupValue,
+      required Function(int) onChanged}) {
+    final bool isSelected = value == groupValue;
+    return InkWell(
+      onTap: () => onChanged(value),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: isSelected ? Colors.blue.withOpacity(0.1) : Colors.transparent,
+          border: Border.all(
+              color: isSelected ? Colors.blue : Colors.grey.withOpacity(0.3)),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          children: [
+            Icon(
+                isSelected
+                    ? Icons.radio_button_checked
+                    : Icons.radio_button_off,
+                color: isSelected ? Colors.blue : Colors.grey),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      style: TextStyle(
+                          fontWeight: isSelected
+                              ? FontWeight.bold
+                              : FontWeight.normal)),
+                  if (subtitle != null)
+                    Text(subtitle,
+                        style:
+                            const TextStyle(fontSize: 12, color: Colors.grey)),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -370,63 +348,84 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Pengaturan Printer"),
-        backgroundColor: Colors.white,
-        elevation: 1,
-        titleTextStyle: const TextStyle(color: Colors.black, fontSize: 18, fontWeight: FontWeight.bold),
-        iconTheme: const IconThemeData(color: Colors.black),
-      ),
+      appBar: AppBar(title: const Text("Pengaturan Printer")),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                // 1. KONEKSI PRINTER (TETAP DI ATAS)
-                _buildConnectionSection(),
-                
-                const SizedBox(height: 16),
-                
-                // 2. PREVIEW GAMBAR (BARU)
-                _buildPreviewSection(), 
-                
-                const SizedBox(height: 16),
-                
-                // 3. SETTING KUALITAS (Persis di bawah Preview)
-                _buildQualitySection(), 
-                
-                const SizedBox(height: 16),
-                
-                // 4. FILTER (Dithering dll)
-                _buildFilterSection(),
-                
-                const SizedBox(height: 16),
-                
-                // 5. UKURAN KERTAS
-                _buildPaperSettingsSection(),
-                
-                const SizedBox(height: 24),
-                
-                ElevatedButton.icon(
-                  onPressed: _isConnected ? () => _printerService.testPrint() : null,
-                  icon: const Icon(Icons.print),
-                  label: const Text("Test Print (Kertas)"),
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    backgroundColor: Colors.blueAccent,
-                    foregroundColor: Colors.white,
+                // BAGIAN 1: EPSON
+                const Text("1. Printer Epson (USB)",
+                    style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blue)),
+                const SizedBox(height: 8),
+                Card(
+                  elevation: 2,
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      children: [
+                        const Text("Sambungkan Epson via USB OTG."),
+                        const SizedBox(height: 10),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            onPressed: _showEpsonPrintOptionDialog,
+                            icon: const Icon(Icons.print_outlined),
+                            label: const Text("Mulai Mencetak (Pilih Mode)"),
+                            style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.blue,
+                                foregroundColor: Colors.white),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
+
+                const SizedBox(height: 24),
+                const Divider(thickness: 2),
+                const SizedBox(height: 10),
+
+                // BAGIAN 2: THERMAL
+                const Text("2. Printer Struk (Thermal)",
+                    style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.orange)),
+                const SizedBox(height: 8),
+                _buildConnectionSection(),
+                const SizedBox(height: 16),
+                _buildPreviewSection(),
+                const SizedBox(height: 16),
+                _buildQualitySection(),
+                const SizedBox(height: 16),
+                _buildFilterSection(),
+                const SizedBox(height: 16),
+                _buildPaperSettingsSection(),
+                const SizedBox(height: 24),
+
+                ElevatedButton.icon(
+                  onPressed: _isConnected
+                      ? () => _printerService.testPrintThermal()
+                      : null,
+                  icon: const Icon(Icons.receipt_long),
+                  label: const Text("Test Print Struk (Thermal)"),
+                  style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      backgroundColor: Colors.orange,
+                      foregroundColor: Colors.white),
+                ),
+                const SizedBox(height: 30),
               ],
             ),
     );
   }
 
-  // --- WIDGET PREVIEW GAMBAR ---
   Widget _buildPreviewSection() {
     return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -434,51 +433,29 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
-                  "Simulasi Hasil Cetak", 
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)
-                ),
-                // TOMBOL GANTI GAMBAR (BARU)
-                TextButton.icon(
-                  onPressed: _pickImageFromGallery, 
-                  icon: const Icon(Icons.photo_library, size: 18),
-                  label: const Text("Ganti Gambar"),
-                  style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                ),
+                const Text("Preview Gambar",
+                    style: TextStyle(fontWeight: FontWeight.bold)),
+                TextButton(
+                    onPressed: _pickImageFromGallery,
+                    child: const Text("Ganti Gambar")),
               ],
             ),
-            const SizedBox(height: 4),
-            const Text(
-              "Gambar di bawah mensimulasikan efek Dithering/Hitam Putih pada kertas.", 
-              style: TextStyle(fontSize: 11, color: Colors.grey)
-            ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
             Container(
-              height: 180, // Sedikit lebih tinggi agar jelas
+              height: 180,
               width: double.infinity,
-              decoration: BoxDecoration(
-                color: Colors.grey[200],
-                border: Border.all(color: Colors.grey[300]!),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: _isGeneratingPreview 
-                  ? const Center(child: CircularProgressIndicator())
-                  : _previewBytes != null
-                      ? ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: InteractiveViewer( // Bisa di-zoom biar detail
-                            child: Image.memory(
-                              _previewBytes!,
-                              fit: BoxFit.contain,
-                              gaplessPlayback: true,
-                            ),
-                          ),
-                        )
-                      : const Center(child: Text("Gagal memuat gambar contoh")),
+              color: Colors.grey[200],
+              child: _previewBytes != null
+                  ? Image.memory(_previewBytes!,
+                      fit: BoxFit.contain, gaplessPlayback: true)
+                  : const Center(child: Text("Belum ada gambar")),
             ),
+            const Text(
+                "Preview di atas adalah hasil Dithering (Thermal). Untuk Epson, gambar dicetak warna.",
+                style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.grey,
+                    fontStyle: FontStyle.italic)),
           ],
         ),
       ),
@@ -487,45 +464,30 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
 
   Widget _buildConnectionSection() {
     return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text("Koneksi Printer", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Icon(Icons.bluetooth, color: _isConnected ? Colors.green : Colors.grey),
-                const SizedBox(width: 10),
-                Text(
-                  _isConnected ? "Status: TERHUBUNG" : "Status: TERPUTUS",
-                  style: TextStyle(fontWeight: FontWeight.bold, color: _isConnected ? Colors.green : Colors.red),
-                ),
-                const Spacer(),
-                if (_isConnected)
-                  TextButton(onPressed: _disconnect, child: const Text("Putuskan", style: TextStyle(color: Colors.red)))
-                else
-                  TextButton(onPressed: _getPairedDevices, child: const Text("Scan")),
-              ],
-            ),
-            const Divider(),
-            if (_pairedDevices.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 8.0),
-                child: Text("List kosong. Pastikan printer sudah pairing di Setting Bluetooth HP."),
-              )
-            else
-              ..._pairedDevices.map((device) => ListTile(
-                    title: Text(device.name.isEmpty ? "Unknown" : device.name),
-                    subtitle: Text(device.macAdress),
-                    trailing: (_selectedMac == device.macAdress && _isConnected)
-                        ? const Icon(Icons.check_circle, color: Colors.green)
-                        : const Icon(Icons.link),
-                    onTap: () => _connectToDevice(device.macAdress),
-                    dense: true,
+            Row(children: [
+              Icon(Icons.bluetooth,
+                  color: _isConnected ? Colors.green : Colors.grey),
+              const SizedBox(width: 10),
+              Text(_isConnected ? "TERHUBUNG" : "TERPUTUS",
+                  style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: _isConnected ? Colors.green : Colors.red)),
+              const Spacer(),
+              if (_isConnected)
+                TextButton(onPressed: _disconnect, child: const Text("Putus"))
+              else
+                TextButton(
+                    onPressed: _getPairedDevices, child: const Text("Scan")),
+            ]),
+            if (_pairedDevices.isNotEmpty && !_isConnected)
+              ..._pairedDevices.map((d) => ListTile(
+                    title: Text(d.name),
+                    subtitle: Text(d.macAdress),
+                    onTap: () => _connectToDevice(d.macAdress),
                   )),
           ],
         ),
@@ -535,57 +497,29 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
 
   Widget _buildPaperSettingsSection() {
     return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text("Resolusi & Ukuran Kertas", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            const SizedBox(height: 10),
-            
+            const Text("Ukuran Kertas (Thermal)",
+                style: TextStyle(fontWeight: FontWeight.bold)),
             _buildCustomRadio(
-              title: "80mm High (Default)",
-              subtitle: "Kualitas Terbaik (576 dots)",
-              value: 2,
-              groupValue: _printerMode,
-              onChanged: (val) { setState(() => _printerMode = val); _saveSetting('printer_mode_type', val); },
-            ),
-
+                title: "80mm High",
+                value: 2,
+                groupValue: _printerMode,
+                onChanged: (v) {
+                  setState(() => _printerMode = v);
+                  _saveSetting('printer_mode_type', v);
+                }),
             _buildCustomRadio(
-              title: "80mm Medium (384 dots)",
-              subtitle: "Standard",
-              value: 3,
-              groupValue: _printerMode,
-              onChanged: (val) { setState(() => _printerMode = val); _saveSetting('printer_mode_type', val); },
-            ),
-
-            _buildCustomRadio(
-              title: "80mm Custom (350 dots)",
-              subtitle: "Resolusi Menengah",
-              value: 7,
-              groupValue: _printerMode,
-              onChanged: (val) { setState(() => _printerMode = val); _saveSetting('printer_mode_type', val); },
-            ),
-
-            _buildCustomRadio(
-              title: "80mm Low (288 dots)",
-              subtitle: "Resolusi Rendah - Cepat",
-              value: 4,
-              groupValue: _printerMode,
-              onChanged: (val) { setState(() => _printerMode = val); _saveSetting('printer_mode_type', val); },
-            ),
-            
-            const Divider(),
-            
-            _buildCustomRadio(
-              title: "Kertas 58mm",
-              subtitle: "Ukuran Kecil (Struk Biasa)",
-              value: 1,
-              groupValue: _printerMode,
-              onChanged: (val) { setState(() => _printerMode = val); _saveSetting('printer_mode_type', val); },
-            ),
+                title: "58mm",
+                value: 1,
+                groupValue: _printerMode,
+                onChanged: (v) {
+                  setState(() => _printerMode = v);
+                  _saveSetting('printer_mode_type', v);
+                }),
           ],
         ),
       ),
@@ -594,44 +528,31 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
 
   Widget _buildFilterSection() {
     return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text("Gaya & Filter Gambar", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            const SizedBox(height: 4),
-            const Text(
-              "Ganti filter untuk melihat perbedaannya di preview atas.",
-              style: TextStyle(fontSize: 11, color: Colors.grey),
-            ),
-            const SizedBox(height: 10),
-            
+            const Text("Filter (Thermal)",
+                style: TextStyle(fontWeight: FontWeight.bold)),
             _buildCustomRadio(
-              title: "Standard (Dithering)",
-              subtitle: "Bintik-bintik gradasi. Lebih lambat tapi detail.",
-              value: 1,
-              groupValue: _imageFilter,
-              onChanged: (val) { 
-                setState(() => _imageFilter = val); 
-                _saveSetting('printer_image_filter', val); 
-                _updatePreview(); // Trigger update preview
-              },
-            ),
-
+                title: "Standard (Dithering)",
+                value: 1,
+                groupValue: _imageFilter,
+                onChanged: (v) {
+                  setState(() => _imageFilter = v);
+                  _saveSetting('printer_image_filter', v);
+                  _updatePreview();
+                }),
             _buildCustomRadio(
-              title: "Hitam Putih Tegas (Threshold)",
-              subtitle: "Kontras tinggi, tanpa abu-abu. LEBIH CEPAT.",
-              value: 2,
-              groupValue: _imageFilter,
-              onChanged: (val) { 
-                setState(() => _imageFilter = val); 
-                _saveSetting('printer_image_filter', val); 
-                _updatePreview(); // Trigger update preview
-              },
-            ),
+                title: "Hitam Putih (Threshold)",
+                value: 2,
+                groupValue: _imageFilter,
+                onChanged: (v) {
+                  setState(() => _imageFilter = v);
+                  _saveSetting('printer_image_filter', v);
+                  _updatePreview();
+                }),
           ],
         ),
       ),
@@ -640,45 +561,38 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
 
   Widget _buildQualitySection() {
     return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text("Kecerahan & Kontras", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            const SizedBox(height: 16),
-            
-            // Brightness Slider
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [const Text("Kecerahan"), Text(_brightness.toStringAsFixed(1))],
-            ),
+            Row(children: [
+              const Text("Brightness"),
+              const Spacer(),
+              Text(_brightness.toStringAsFixed(1))
+            ]),
             Slider(
-              value: _brightness, min: 0.5, max: 2.5, divisions: 20,
-              label: _brightness.toStringAsFixed(1),
-              onChanged: (val) => setState(() => _brightness = val),
-              onChangeEnd: (val) {
-                _saveSetting('printer_brightness', val);
-                _updatePreview(); // Trigger update preview saat slider dilepas
-              },
-            ),
-
-            // Contrast Slider
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [const Text("Kontras"), Text(_contrast.toStringAsFixed(1))],
-            ),
+                value: _brightness,
+                min: 0.5,
+                max: 2.5,
+                onChanged: (v) => setState(() => _brightness = v),
+                onChangeEnd: (v) {
+                  _saveSetting('printer_brightness', v);
+                  _updatePreview();
+                }),
+            Row(children: [
+              const Text("Contrast"),
+              const Spacer(),
+              Text(_contrast.toStringAsFixed(1))
+            ]),
             Slider(
-              value: _contrast, min: 0.5, max: 2.5, divisions: 20,
-              label: _contrast.toStringAsFixed(1),
-              onChanged: (val) => setState(() => _contrast = val),
-              onChangeEnd: (val) {
-                _saveSetting('printer_contrast', val);
-                _updatePreview(); // Trigger update preview saat slider dilepas
-              },
-            ),
+                value: _contrast,
+                min: 0.5,
+                max: 2.5,
+                onChanged: (v) => setState(() => _contrast = v),
+                onChangeEnd: (v) {
+                  _saveSetting('printer_contrast', v);
+                  _updatePreview();
+                }),
           ],
         ),
       ),

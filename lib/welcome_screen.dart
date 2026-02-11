@@ -5,7 +5,7 @@ import 'package:photo_box/main.dart'; // Import tema
 import 'package:photo_box/printer_settings_screen.dart'; // Import Screen Printer
 import 'package:photo_box/screens/admin_setup_screen.dart'; // Import Setup Admin
 import 'package:photo_box/services/voucher_service.dart'; // Import Service Voucher
-import 'package:photo_box/session_selection_screen.dart';
+import 'package:photo_box/session_selection_screen.dart'; // Screen Pemilihan Mode
 
 class WelcomeScreen extends StatefulWidget {
   final CameraDescription camera;
@@ -31,59 +31,49 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
 
   // --- LOGIKA VOUCHER ---
   Future<void> _submitVoucher() async {
-    // Ambil input mentah (tanpa ubah ke huruf besar dulu) untuk cek password admin
     String rawInput = _codeController.text.trim();
     if (rawInput.isEmpty) return;
 
-    // -----------------------------------------------------------
     // 1. CEK KODE ADMIN (BYPASS)
-    // -----------------------------------------------------------
     if (rawInput == _adminBypassCode) {
       if (mounted) {
         Navigator.pop(context); // Tutup Dialog
         _codeController.clear();
-        
-        // Langsung masuk sebagai ADMIN
+
         Navigator.push(
           context,
           MaterialPageRoute(
               builder: (context) => SessionSelectionScreen(
-                camera: widget.camera,
-                voucherCode: "ADMIN", // Nama folder khusus
-              )),
+                    camera: widget.camera,
+                    voucherCode: "ADMIN",
+                  )),
         );
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Login Admin Berhasil! (Bypass Server)"), 
-            backgroundColor: Colors.blueAccent
-          )
-        );
-      }
-      return; // Stop di sini, jangan lanjut cek server
-    }
-    // -----------------------------------------------------------
 
-    // Ubah ke Huruf Besar untuk Voucher Biasa (misal: a7x99 -> A7X99)
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text("Login Admin Berhasil!"),
+            backgroundColor: Colors.blueAccent));
+      }
+      return;
+    }
+
+    // 2. LOGIKA VOUCHER USER
     String code = rawInput.toUpperCase();
 
-    // 2. Cek apakah IP Admin sudah disetting
+    // Cek apakah IP Admin sudah disetting
     bool isConfigured = await _voucherService.isAdminConfigured();
     if (!isConfigured) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Admin belum disetting! Hubungi petugas (Tekan tombol Remote di kiri atas)."),
-            backgroundColor: Colors.orange,
-          )
-        );
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text("Admin belum disetting! Hubungi petugas."),
+          backgroundColor: Colors.orange,
+        ));
       }
       return;
     }
 
     setState(() => _isLoading = true);
 
-    // 3. Verifikasi ke Server Admin via Wi-Fi
+    // Verifikasi ke Server
     final result = await _voucherService.verifyVoucher(code);
 
     setState(() => _isLoading = false);
@@ -92,23 +82,20 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
       if (result['valid'] == true) {
         Navigator.pop(context); // Tutup Dialog
         _codeController.clear();
-        
-        // Kirim kode voucher ke halaman berikutnya
+
+        // Pindah ke Halaman Pemilihan Sesi (Mode Struk/Normal)
         Navigator.push(
           context,
           MaterialPageRoute(
               builder: (context) => SessionSelectionScreen(
-                camera: widget.camera,
-                voucherCode: code, // Mengirim kode voucher
-              )),
+                    camera: widget.camera,
+                    voucherCode: code,
+                  )),
         );
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(result['message'] ?? "Kode Salah / Kadaluarsa"), 
-            backgroundColor: Colors.red
-          )
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(result['message'] ?? "Kode Salah / Kadaluarsa"),
+            backgroundColor: Colors.red));
       }
     }
   }
@@ -121,7 +108,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
         backgroundColor: Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
         title: const Text(
-          "Masukkan Kode Voucher", 
+          "Masukkan Kode Voucher",
           style: TextStyle(color: textDark, fontWeight: FontWeight.bold),
           textAlign: TextAlign.center,
         ),
@@ -132,9 +119,12 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
               controller: _codeController,
               autofocus: true,
               textAlign: TextAlign.center,
-              // Matikan textCapitalization agar bisa input huruf kecil untuk password admin
-              textCapitalization: TextCapitalization.none, 
-              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, letterSpacing: 5, color: textDark),
+              textCapitalization: TextCapitalization.none,
+              style: const TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 5,
+                  color: textDark),
               decoration: const InputDecoration(
                 hintText: "Kode",
                 hintStyle: TextStyle(color: Colors.grey, letterSpacing: 2),
@@ -163,16 +153,19 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
               foregroundColor: textDark,
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
             ),
-            child: _isLoading 
-              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: textDark, strokeWidth: 2))
-              : const Text("MULAI FOTO", style: TextStyle(fontWeight: FontWeight.bold)),
+            child: _isLoading
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                        color: textDark, strokeWidth: 2))
+                : const Text("MULAI FOTO",
+                    style: TextStyle(fontWeight: FontWeight.bold)),
           ),
         ],
       ),
     );
   }
-
-  // --- UI HELPERS ---
 
   Widget _buildSmileyIcon({double size = 150}) {
     return Stack(
@@ -210,7 +203,8 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
             height: size * 0.25,
             decoration: BoxDecoration(
               color: textDark,
-              borderRadius: BorderRadius.vertical(bottom: Radius.circular(size * 0.25)),
+              borderRadius:
+                  BorderRadius.vertical(bottom: Radius.circular(size * 0.25)),
             ),
           ),
         ),
@@ -228,81 +222,63 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
           backgroundColor: backgroundLight,
           body: Stack(
             children: [
-              // Layout Utama
               SafeArea(
                 child: Center(
                   child: SingleChildScrollView(
-                    padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 40),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 30, vertical: 40),
                     child: isPortrait
                         ? _buildPortraitLayout(context)
                         : _buildLandscapeLayout(context),
                   ),
                 ),
               ),
-
-              // --- TOMBOL ADMIN SETUP (KIRI ATAS) ---
               Positioned(
                 top: 40,
                 left: 20,
                 child: IconButton(
-                  icon: const Icon(Icons.settings_remote, color: accentGrey, size: 30),
-                  tooltip: 'Setup Koneksi Admin',
-                  onPressed: () {
-                    Navigator.push(
+                  icon: const Icon(Icons.settings_remote,
+                      color: accentGrey, size: 30),
+                  onPressed: () => Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (context) => const AdminSetupScreen()),
-                    );
-                  },
+                      MaterialPageRoute(
+                          builder: (context) => const AdminSetupScreen())),
                 ),
               ),
-
-              // --- TOMBOL PRINTER & GALERI (KANAN ATAS) ---
               Positioned(
                 top: 40,
                 right: 20,
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Tombol Printer
                     IconButton(
-                      icon: const Icon(Icons.print, color: accentGrey, size: 30),
-                      tooltip: 'Setting Printer',
-                      onPressed: () {
-                        Navigator.push(
+                      icon:
+                          const Icon(Icons.print, color: accentGrey, size: 30),
+                      onPressed: () => Navigator.push(
                           context,
-                          MaterialPageRoute(builder: (context) => const PrinterSettingsScreen()),
-                        );
-                      },
+                          MaterialPageRoute(
+                              builder: (context) =>
+                                  const PrinterSettingsScreen())),
                     ),
                     const SizedBox(width: 10),
-                    // Tombol Galeri
                     IconButton(
-                      icon: const Icon(Icons.photo_library_outlined, color: accentGrey, size: 35),
-                      tooltip: 'Lihat Galeri',
-                      onPressed: () {
-                        Navigator.push(
+                      icon: const Icon(Icons.photo_library_outlined,
+                          color: accentGrey, size: 35),
+                      onPressed: () => Navigator.push(
                           context,
-                          MaterialPageRoute(builder: (context) => const GalleryScreen()),
-                        );
-                      },
+                          MaterialPageRoute(
+                              builder: (context) => const GalleryScreen())),
                     ),
                   ],
                 ),
               ),
-
-              // Footer
               const Positioned(
                 bottom: 20,
                 left: 0,
                 right: 0,
-                child: Text(
-                  'Created by danny © 2025',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: accentGrey,
-                    fontSize: 14,
-                  ),
-                ),
+                child: Text('Created by danny © 2025',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: accentGrey, fontSize: 14)),
               ),
             ],
           ),
@@ -317,45 +293,29 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
       children: [
         _buildSmileyIcon(size: 180),
         const SizedBox(height: 40),
-        const Text(
-          'Selamat Datang di',
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 24,
-            color: textDark,
-            fontWeight: FontWeight.w300,
-          ),
-        ),
-        const Text(
-          'PHOTOBOX SENYUM!',
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 42,
-            color: primaryYellow,
-            fontWeight: FontWeight.bold,
-            letterSpacing: 2,
-          ),
-        ),
+        const Text('Selamat Datang di',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+                fontSize: 24, color: textDark, fontWeight: FontWeight.w300)),
+        const Text('PHOTOBOX SENYUM!',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+                fontSize: 42,
+                color: primaryYellow,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 2)),
         const SizedBox(height: 60),
         ElevatedButton(
-          onPressed: () {
-            // PANGGIL DIALOG VOUCHER SAAT KLIK MULAI
-            _showVoucherDialog();
-          },
+          onPressed: _showVoucherDialog,
           style: ElevatedButton.styleFrom(
-            padding: const EdgeInsets.symmetric(horizontal: 60, vertical: 20),
-            textStyle: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-          ),
+              padding: const EdgeInsets.symmetric(horizontal: 60, vertical: 20),
+              textStyle:
+                  const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
           child: const Text('MULAI'),
         ),
         const SizedBox(height: 15),
-        const Text(
-          'Sentuh tombol untuk memulai',
-          style: TextStyle(
-            color: accentGrey,
-            fontSize: 16,
-          ),
-        ),
+        const Text('Sentuh tombol untuk memulai',
+            style: TextStyle(color: accentGrey, fontSize: 16)),
       ],
     );
   }
@@ -364,10 +324,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: [
-        Expanded(
-          flex: 2,
-          child: _buildSmileyIcon(size: 250),
-        ),
+        Expanded(flex: 2, child: _buildSmileyIcon(size: 250)),
         const SizedBox(width: 40),
         Expanded(
           flex: 3,
@@ -375,43 +332,30 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Selamat Datang di',
-                style: TextStyle(
-                  fontSize: 32,
-                  color: textDark,
-                  fontWeight: FontWeight.w300,
-                ),
-              ),
-              const Text(
-                'PHOTOBOX SENYUM!',
-                style: TextStyle(
-                  fontSize: 64,
-                  color: primaryYellow,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 3,
-                ),
-              ),
+              const Text('Selamat Datang di',
+                  style: TextStyle(
+                      fontSize: 32,
+                      color: textDark,
+                      fontWeight: FontWeight.w300)),
+              const Text('PHOTOBOX SENYUM!',
+                  style: TextStyle(
+                      fontSize: 64,
+                      color: primaryYellow,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 3)),
               const SizedBox(height: 80),
               ElevatedButton(
-                onPressed: () {
-                   // PANGGIL DIALOG VOUCHER SAAT KLIK MULAI
-                   _showVoucherDialog();
-                },
+                onPressed: _showVoucherDialog,
                 style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 70, vertical: 25),
-                  textStyle: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
-                ),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 70, vertical: 25),
+                    textStyle: const TextStyle(
+                        fontSize: 28, fontWeight: FontWeight.bold)),
                 child: const Text('MULAI'),
               ),
               const SizedBox(height: 15),
-              const Text(
-                'Sentuh tombol untuk memulai',
-                style: TextStyle(
-                  color: accentGrey,
-                  fontSize: 16,
-                ),
-              ),
+              const Text('Sentuh tombol untuk memulai',
+                  style: TextStyle(color: accentGrey, fontSize: 16)),
             ],
           ),
         ),

@@ -46,7 +46,7 @@ class MyApp extends StatelessWidget {
           secondary: primaryYellow, // Bisa diganti jika perlu aksen kedua
           background: backgroundLight,
           onBackground: textDark,
-          surface: backgroundDark, // Untuk Card atau elemen di atas background
+          surface: backgroundDark, // Permukaan sedikit abu-abu
           onSurface: textDark,
           brightness: Brightness.light,
         ),
