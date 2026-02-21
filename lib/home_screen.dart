@@ -4,21 +4,24 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:photo_box/main.dart'; // Import untuk warna
 import 'package:photo_box/preview_screen.dart';
-import 'package:photo_box/photostrip_creator_screen.dart'; 
-import 'package:image_gallery_saver_plus/image_gallery_saver_plus.dart'; // WAJIB: Import untuk simpan ke galeri
+import 'package:photo_box/photostrip_creator_screen.dart';
+import 'package:image_gallery_saver_plus/image_gallery_saver_plus.dart';
+import 'package:photo_box/printing_services.dart'; // Import PrinterServices
+import 'package:ffmpeg_kit_flutter/ffmpeg_kit.dart'; // Import FFmpeg
+import 'package:path_provider/path_provider.dart'; // Import Path Provider
 
 class HomeScreen extends StatefulWidget {
   final CameraDescription camera;
   final int totalTakes;
   final String sessionId;
-  final String voucherCode; // Tambahan: Menerima Kode Voucher
+  final String voucherCode;
 
   const HomeScreen({
     super.key,
     required this.camera,
     required this.totalTakes,
     required this.sessionId,
-    required this.voucherCode, // Wajib diisi
+    required this.voucherCode,
   });
 
   @override
@@ -28,18 +31,18 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   late CameraController _controller;
   late Future<void> _initializeControllerFuture;
-  
+
   int _currentTake = 1;
-  
-  // Logika Retake (Sisa 2 kali)
-  int _retakesUsed = 0; 
-  final int _maxRetakes = 2; 
+  int _retakesUsed = 0;
+  final int _maxRetakes = 2;
 
   final List<XFile> _takenImages = [];
   String _message = "SIAP-SIAP!";
   int _countdown = 3;
   Timer? _countdownTimer;
   bool _showGetReady = true;
+
+  bool _isRecordingFlipbook = false; // State untuk video flipbook
 
   @override
   void initState() {
@@ -56,7 +59,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _startSession() {
     Future.delayed(const Duration(seconds: 2), () {
-      if (mounted) {
+      if (mounted && !_isRecordingFlipbook) {
         setState(() => _showGetReady = false);
         _startCountdown();
       }
@@ -66,7 +69,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void _startCountdown() {
     setState(() {
       _message = "SENYUM!";
-      _countdown = 3; 
+      _countdown = 3;
     });
 
     _countdownTimer?.cancel();
@@ -83,16 +86,16 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _takePicture() async {
+    if (_isRecordingFlipbook) return; // Jangan ambil foto jika sedang merekam
+
     try {
       await _initializeControllerFuture;
       final image = await _controller.takePicture();
 
       if (!mounted) return;
 
-      // Cek kuota retake
       bool canRetake = _retakesUsed < _maxRetakes;
 
-      // Navigasi ke Preview Screen untuk konfirmasi hasil foto
       final result = await Navigator.of(context).push(
         MaterialPageRoute(
           builder: (context) => PreviewScreen(
@@ -104,13 +107,12 @@ class _HomeScreenState extends State<HomeScreen> {
       );
 
       if (result == PreviewAction.retake && canRetake) {
-        // Jika User memilih Retake
         setState(() {
           _retakesUsed++;
           _message = "ULANGI LAGI!";
           _showGetReady = true;
         });
-        
+
         Future.delayed(const Duration(seconds: 1), () {
           if (mounted) {
             setState(() => _showGetReady = false);
@@ -118,21 +120,13 @@ class _HomeScreenState extends State<HomeScreen> {
           }
         });
       } else {
-        // Jika User memilih LANJUT (Foto Diterima)
-        
-        // --- 1. SIMPAN FOTO MENTAH KE GALERI ---
-        // Simpan dengan nama: KODEVOUCHER_raw_URUTAN (misal: A7X99_raw_1)
-        await ImageGallerySaverPlus.saveFile(
-          image.path, 
-          name: "${widget.voucherCode}_raw_$_currentTake"
-        );
+        await ImageGallerySaverPlus.saveFile(image.path,
+            name: "${widget.voucherCode}_raw_$_currentTake");
         debugPrint("Foto mentah ke-$_currentTake tersimpan di galeri.");
-        // ---------------------------------------
 
         _takenImages.add(image);
-        
+
         if (_currentTake < widget.totalTakes) {
-          // Lanjut ke foto berikutnya
           setState(() {
             _currentTake++;
             _message = "FOTO BERIKUTNYA!";
@@ -145,14 +139,13 @@ class _HomeScreenState extends State<HomeScreen> {
             }
           });
         } else {
-          // --- SESI SELESAI: KE EDITOR ---
           if (!mounted) return;
           Navigator.of(context).pushReplacement(
             MaterialPageRoute(
               builder: (context) => PhotostripCreatorScreen(
-                sessionImages: _takenImages, 
+                sessionImages: _takenImages,
                 sessionId: widget.sessionId,
-                voucherCode: widget.voucherCode, // Teruskan Kode Voucher
+                voucherCode: widget.voucherCode,
               ),
             ),
           );
@@ -160,6 +153,104 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     } catch (e) {
       debugPrint('Error taking picture: $e');
+    }
+  }
+
+  // ==========================================
+  // LOGIKA PEREKAMAN VIDEO UNTUK FLIPBOOK
+  // ==========================================
+  void _startFlipbookRecording() async {
+    if (_isRecordingFlipbook) return;
+
+    // Batalkan countdown foto biasa
+    _countdownTimer?.cancel();
+
+    try {
+      await _initializeControllerFuture;
+
+      setState(() {
+        _message = "MEREKAM...";
+        _showGetReady = true;
+        _isRecordingFlipbook = true;
+      });
+
+      // Mulai rekam video
+      await _controller.startVideoRecording();
+
+      // Rekam selama 3 detik (cukup untuk 24 frame)
+      await Future.delayed(const Duration(seconds: 3));
+
+      // Hentikan rekaman
+      final XFile videoFile = await _controller.stopVideoRecording();
+
+      setState(() {
+        _message = "MEMPROSES FLIPBOOK...";
+      });
+
+      // Proses ekstrak frame
+      List<File> extractedFrames =
+          await _extractFramesFromVideo(videoFile.path);
+
+      if (extractedFrames.length >= 24) {
+        // Ambil 24 frame pertama
+        List<File> finalFrames = extractedFrames.take(24).toList();
+
+        setState(() {
+          _isRecordingFlipbook = false;
+          _message = "SELESAI!";
+        });
+
+        // Langsung cetak ke EPSON
+        final printerServices = PrinterServices();
+        await printerServices.printFlipbookLayout(finalFrames);
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content:
+                    Text("Berhasil membuat & mencetak 24 frame Flipbook!")),
+          );
+        }
+      } else {
+        setState(() {
+          _isRecordingFlipbook = false;
+          _showGetReady = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error recording flipbook video: $e');
+      setState(() {
+        _isRecordingFlipbook = false;
+        _showGetReady = false;
+      });
+    }
+  }
+
+  Future<List<File>> _extractFramesFromVideo(String videoPath) async {
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final outDirPath =
+          '${dir.path}/flipbook_frames_${DateTime.now().millisecondsSinceEpoch}';
+      await Directory(outDirPath).create(recursive: true);
+
+      final String outPattern = '$outDirPath/frame_%03d.jpg';
+      final String command = '-i "$videoPath" -frames:v 24 "$outPattern"';
+
+      await FFmpegKit.execute(command);
+
+      final directory = Directory(outDirPath);
+      List<File> frames = directory
+          .listSync()
+          .whereType<File>()
+          .where((file) => file.path.endsWith('.jpg'))
+          .toList();
+
+      frames.sort((a, b) => a.path.compareTo(b.path));
+
+      return frames;
+    } catch (e) {
+      debugPrint("Gagal mengekstrak frame: $e");
+      return [];
     }
   }
 
@@ -177,12 +268,21 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       backgroundColor: backgroundDark,
+      // Tambahkan FloatingActionButton untuk memulai rekam Flipbook
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _startFlipbookRecording,
+        label: const Text(
+          "Buat Flipbook",
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        icon: const Icon(Icons.videocam),
+        backgroundColor: Colors.amber, // Ganti dengan primaryYellow jika ada
+      ),
       body: FutureBuilder<void>(
         future: _initializeControllerFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.done &&
               _controller.value.isInitialized) {
-            
             final frameWidth =
                 isPortrait ? screenSize.width * 0.8 : screenSize.width * 0.5;
 
@@ -222,7 +322,6 @@ class _HomeScreenState extends State<HomeScreen> {
                         alignment: Alignment.center,
                         children: [
                           CameraPreview(_controller),
-                          
                           Container(
                             color: Colors.black.withAlpha(50),
                             child: Center(
@@ -246,12 +345,15 @@ class _HomeScreenState extends State<HomeScreen> {
                                             ],
                                           ),
                                         ),
-                                        if (!_showGetReady && _countdown > 0)
+                                        if (!_showGetReady &&
+                                            _countdown > 0 &&
+                                            !_isRecordingFlipbook)
                                           Text(
                                             '$_countdown',
                                             style: TextStyle(
                                               fontSize: isPortrait ? 100 : 150,
-                                              color: primaryYellow,
+                                              color: Colors
+                                                  .amber, // Ganti dengan primaryYellow
                                               fontWeight: FontWeight.bold,
                                               shadows: const [
                                                 Shadow(
@@ -276,9 +378,10 @@ class _HomeScreenState extends State<HomeScreen> {
                   right: 0,
                   child: Column(
                     children: [
-                      // Menampilkan info foto ke berapa dan Kode Voucher
                       Text(
-                        "FOTO $_currentTake / ${widget.totalTakes}",
+                        _isRecordingFlipbook
+                            ? "MODE FLIPBOOK AKTIF"
+                            : "FOTO $_currentTake / ${widget.totalTakes}",
                         textAlign: TextAlign.center,
                         style: const TextStyle(
                             color: textDark,
@@ -287,10 +390,12 @@ class _HomeScreenState extends State<HomeScreen> {
                             letterSpacing: 2),
                       ),
                       const SizedBox(height: 5),
-                      Text(
-                        "Voucher: ${widget.voucherCode} | Sisa Retake: ${_maxRetakes - _retakesUsed}",
-                        style: const TextStyle(color: accentGrey, fontSize: 12),
-                      ),
+                      if (!_isRecordingFlipbook)
+                        Text(
+                          "Voucher: ${widget.voucherCode} | Sisa Retake: ${_maxRetakes - _retakesUsed}",
+                          style:
+                              const TextStyle(color: Colors.grey, fontSize: 12),
+                        ),
                     ],
                   ),
                 ),
@@ -298,7 +403,8 @@ class _HomeScreenState extends State<HomeScreen> {
             );
           } else {
             return const Center(
-                child: CircularProgressIndicator(color: primaryYellow));
+                child: CircularProgressIndicator(
+                    color: Colors.amber)); // Ganti primaryYellow
           }
         },
       ),

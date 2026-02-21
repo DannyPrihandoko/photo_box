@@ -186,6 +186,7 @@ class PrinterServices {
     }
   }
 
+  // --- INI FUNGSI YANG SEBELUMNYA HILANG ---
   void _distributeError(img.Image image, int x, int y, double error) {
     if (x >= 0 && x < image.width && y >= 0 && y < image.height) {
       img.Pixel p = image.getPixel(x, y);
@@ -210,11 +211,9 @@ class PrinterServices {
     final pdfImage = pw.MemoryImage(imageBytes);
     final doc = pw.Document();
 
-    // Menggunakan kertas A4 sebagai base (bisa diganti A6/4R jika perlu)
     doc.addPage(
       pw.Page(
         pageFormat: PdfPageFormat.a4,
-        // Jika mode struk, beri margin. Jika foto full, margin 0.
         margin: isStrukMode ? const pw.EdgeInsets.all(20) : pw.EdgeInsets.zero,
         build: (pw.Context context) {
           if (isStrukMode) {
@@ -226,7 +225,6 @@ class PrinterServices {
       ),
     );
 
-    // Membuka dialog print native Android
     await Printing.layoutPdf(
       onLayout: (PdfPageFormat format) async => doc.save(),
       name: isStrukMode
@@ -235,7 +233,6 @@ class PrinterServices {
     );
   }
 
-  /// Layout Foto Full (Fit to Page)
   pw.Widget _buildFullPhotoLayout(pw.MemoryImage image) {
     return pw.Center(
       child: pw.Image(
@@ -245,7 +242,6 @@ class PrinterServices {
     );
   }
 
-  /// Layout Struk (Header Text + Foto Kecil)
   pw.Widget _buildStrukLayout(pw.MemoryImage image) {
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.center,
@@ -256,22 +252,76 @@ class PrinterServices {
         pw.Text("Date: ${DateTime.now().toString().substring(0, 16)}"),
         pw.Divider(),
         pw.SizedBox(height: 10),
-
-        // Batasi ukuran gambar agar terlihat seperti di kertas struk
         pw.Container(
           width: 300,
-          // height: 400, // Optional, biarkan auto height
           decoration: pw.BoxDecoration(
             border: pw.Border.all(color: PdfColors.black, width: 1),
           ),
           child: pw.Image(image, fit: pw.BoxFit.contain),
         ),
-
         pw.SizedBox(height: 10),
         pw.Divider(),
         pw.Text("Terima Kasih!",
             style: pw.TextStyle(fontSize: 16, fontStyle: pw.FontStyle.italic)),
       ],
+    );
+  }
+
+  // ==========================================
+  // BAGIAN 3: LAYOUT FLIPBOOK (BARU)
+  // ==========================================
+
+  /// Layout Flipbook: Menyusun 24 frame gambar menjadi grid (misal 4x6) di kertas A4
+  Future<void> printFlipbookLayout(List<File> frames) async {
+    final doc = pw.Document();
+
+    // Konversi File gambar menjadi format yang bisa dibaca PDF
+    List<pw.MemoryImage> pdfImages = [];
+    for (var frame in frames) {
+      final bytes = await frame.readAsBytes();
+      pdfImages.add(pw.MemoryImage(bytes));
+    }
+
+    doc.addPage(
+      pw.Page(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(20),
+        build: (pw.Context context) {
+          return pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.center,
+            children: [
+              pw.Text("FLIPBOOK 24 FRAMES",
+                  style: pw.TextStyle(
+                      fontSize: 20, fontWeight: pw.FontWeight.bold)),
+              pw.SizedBox(height: 10),
+              pw.Wrap(
+                spacing: 10, // Jarak horizontal antar frame
+                runSpacing: 10, // Jarak vertikal antar baris
+                alignment: pw.WrapAlignment.center,
+                children: pdfImages.map((img) {
+                  return pw.Container(
+                    width:
+                        120, // Sesuaikan ukuran frame agar 4 kolom muat di A4
+                    height: 90,
+                    decoration: pw.BoxDecoration(
+                      border: pw.Border.all(
+                          color: PdfColors.black,
+                          width: 0.5), // Garis bantu potong
+                    ),
+                    child: pw.Image(img, fit: pw.BoxFit.cover),
+                  );
+                }).toList(),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    // Buka dialog print
+    await Printing.layoutPdf(
+      onLayout: (PdfPageFormat format) async => doc.save(),
+      name: 'Flipbook_${DateTime.now().millisecondsSinceEpoch}',
     );
   }
 }
