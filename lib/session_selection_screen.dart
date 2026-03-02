@@ -5,23 +5,21 @@ import 'package:photo_box/main.dart'; // Import untuk warna tema
 
 class SessionSelectionScreen extends StatelessWidget {
   final CameraDescription camera;
-  final String voucherCode; // <--- Variabel baru ditambahkan
+  final String voucherCode;
 
-  // Update Constructor untuk menerima voucherCode
   const SessionSelectionScreen({
     super.key, 
     required this.camera,
-    required this.voucherCode, // <--- Wajib diisi
+    required this.voucherCode, 
   });
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: backgroundDark, // Menggunakan warna dari main.dart
+      backgroundColor: backgroundDark, 
       appBar: AppBar(
-        // Menampilkan Kode Voucher di Judul
         title: Text("Voucher: $voucherCode", style: const TextStyle(color: textDark)),
-        automaticallyImplyLeading: false, // Menghilangkan tombol back otomatis
+        automaticallyImplyLeading: false, 
         centerTitle: true,
         backgroundColor: primaryYellow,
       ),
@@ -32,7 +30,7 @@ class SessionSelectionScreen extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               const Text(
-                "PILIH JUMLAH FOTO",
+                "PILIH MOD FOTO",
                 style: TextStyle(
                   color: textDark,
                   fontSize: 24,
@@ -42,16 +40,27 @@ class SessionSelectionScreen extends StatelessWidget {
               ),
               const SizedBox(height: 40),
 
-              // --- OPSI TUNGGAL: 3 FOTO ---
+              // --- PILIHAN 1: 3 FOTO ---
               _buildSessionOption(
                 context,
                 label: "3 FOTO",
-                description: "Paket Kilat & Hemat",
+                description: "Pakej Kilat & Jimat",
                 icon: Icons.filter_3,
                 totalTakes: 3,
+                isFlipbook: false, // Normal Foto
               ),
+              
+              const SizedBox(height: 20),
 
-              // Opsi 5 dan 10 foto telah dihapus.
+              // --- PILIHAN 2: FLIPBOOK ---
+              _buildSessionOption(
+                context,
+                label: "FLIPBOOK",
+                description: "Cetak 24 Frame Video (3 Saat)",
+                icon: Icons.videocam,
+                totalTakes: 24,
+                isFlipbook: true, // Mod Flipbook
+              ),
             ],
           ),
         ),
@@ -65,6 +74,7 @@ class SessionSelectionScreen extends StatelessWidget {
     required String description,
     required IconData icon,
     required int totalTakes,
+    required bool isFlipbook,
   }) {
     return Card(
       color: backgroundLight,
@@ -72,17 +82,17 @@ class SessionSelectionScreen extends StatelessWidget {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: InkWell(
         onTap: () {
-          // Kita gunakan Kode Voucher sebagai Session ID agar folder rapi
           final String sessionId = voucherCode;
 
-          // Navigasi ke HomeScreen dengan membawa voucherCode
+          // Navigasi ke HomeScreen dengan membawa parameter isFlipbookMode
           Navigator.of(context).push(
             MaterialPageRoute(
               builder: (context) => HomeScreen(
                 camera: camera,
                 totalTakes: totalTakes,
                 sessionId: sessionId,
-                voucherCode: voucherCode, // <--- Teruskan kode ke Home
+                voucherCode: voucherCode,
+                isFlipbookMode: isFlipbook, // Parameter untuk mod flipbook automatik
               ),
             ),
           );
@@ -93,7 +103,6 @@ class SessionSelectionScreen extends StatelessWidget {
           padding: const EdgeInsets.all(25),
           child: Row(
             children: [
-              // Ikon di sebelah kiri
               Container(
                 padding: const EdgeInsets.all(15),
                 decoration: const BoxDecoration(
@@ -103,8 +112,6 @@ class SessionSelectionScreen extends StatelessWidget {
                 child: Icon(icon, color: textDark, size: 30),
               ),
               const SizedBox(width: 20),
-
-              // Teks Label dan Deskripsi
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -128,8 +135,6 @@ class SessionSelectionScreen extends StatelessWidget {
                   ],
                 ),
               ),
-
-              // Panah navigasi di kanan
               const Icon(Icons.arrow_forward_ios, color: accentGrey),
             ],
           ),

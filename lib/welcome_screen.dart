@@ -23,34 +23,114 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
   // --- KODE RAHASIA ADMIN ---
   static const String _adminBypassCode = "se1nyu2m3";
 
+  // --- STATE UNTUK MODE ADMIN (FREE MODE) ---
+  bool _isFreeMode = false;
+
   @override
   void dispose() {
     _codeController.dispose();
     super.dispose();
   }
 
-  // --- LOGIKA VOUCHER ---
+  // --- LOGIKA TOGGLE MODE ADMIN ---
+  void _showAdminToggleDialog() {
+    final TextEditingController adminCodeController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        title: Text(
+          _isFreeMode ? "Matikan Mode Admin?" : "Aktifkan Mode Admin?",
+          style: const TextStyle(color: textDark, fontWeight: FontWeight.bold),
+          textAlign: TextAlign.center,
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              "Masukkan kode rahasia untuk mengubah mode.",
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 12, color: accentGrey),
+            ),
+            const SizedBox(height: 15),
+            TextField(
+              controller: adminCodeController,
+              obscureText: true,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 20, letterSpacing: 5, color: textDark),
+              decoration: const InputDecoration(
+                hintText: "Kode",
+                border: OutlineInputBorder(),
+                filled: true,
+                fillColor: backgroundDark,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Batal", style: TextStyle(color: accentGrey)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (adminCodeController.text == _adminBypassCode) {
+                setState(() {
+                  _isFreeMode = !_isFreeMode; // Tukar Mode
+                });
+                Navigator.pop(context); // Tutup dialog
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(_isFreeMode 
+                      ? "Mode Admin Aktif! Foto tanpa voucher." 
+                      : "Mode Normal Aktif! Membutuhkan voucher."),
+                    backgroundColor: _isFreeMode ? Colors.green : Colors.blue,
+                  ),
+                );
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text("Kode Salah!"), 
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: primaryYellow, foregroundColor: textDark),
+            child: const Text("Konfirmasi"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- JALANKAN SESI TANPA VOUCHER (MODE ADMIN) ---
+  void _startFreeMode() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => SessionSelectionScreen(
+          camera: widget.camera,
+          voucherCode: "ADMIN", // Beri label ADMIN pada sesi ini
+        ),
+      ),
+    );
+  }
+
+  // --- LOGIKA VOUCHER NORMAL ---
   Future<void> _submitVoucher() async {
     String rawInput = _codeController.text.trim();
     if (rawInput.isEmpty) return;
 
-    // 1. CEK KODE ADMIN (BYPASS)
+    // 1. CEK KODE ADMIN (BYPASS LANGSUNG DARI DIALOG VOUCHER)
     if (rawInput == _adminBypassCode) {
       if (mounted) {
-        Navigator.pop(context); // Tutup Dialog
+        Navigator.pop(context); 
         _codeController.clear();
-
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-              builder: (context) => SessionSelectionScreen(
-                    camera: widget.camera,
-                    voucherCode: "ADMIN",
-                  )),
-        );
-
+        _startFreeMode();
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text("Login Admin Berhasil!"),
+            content: Text("Bypass Admin Berhasil!"),
             backgroundColor: Colors.blueAccent));
       }
       return;
@@ -59,7 +139,6 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
     // 2. LOGIKA VOUCHER USER
     String code = rawInput.toUpperCase();
 
-    // Cek apakah IP Admin sudah disetting
     bool isConfigured = await _voucherService.isAdminConfigured();
     if (!isConfigured) {
       if (mounted) {
@@ -72,18 +151,14 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
     }
 
     setState(() => _isLoading = true);
-
-    // Verifikasi ke Server
     final result = await _voucherService.verifyVoucher(code);
-
     setState(() => _isLoading = false);
 
     if (mounted) {
       if (result['valid'] == true) {
-        Navigator.pop(context); // Tutup Dialog
+        Navigator.pop(context); 
         _codeController.clear();
 
-        // Pindah ke Halaman Pemilihan Sesi (Mode Struk/Normal)
         Navigator.push(
           context,
           MaterialPageRoute(
@@ -233,18 +308,35 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                   ),
                 ),
               ),
+              
+              // --- KELOMPOK TOMBOL KIRI ATAS (ADMIN SETUP & TOGGLE MODE) ---
               Positioned(
                 top: 40,
                 left: 20,
-                child: IconButton(
-                  icon: const Icon(Icons.settings_remote,
-                      color: accentGrey, size: 30),
-                  onPressed: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (context) => const AdminSetupScreen())),
+                child: Row(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.settings_remote,
+                          color: accentGrey, size: 30),
+                      onPressed: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (context) => const AdminSetupScreen())),
+                    ),
+                    const SizedBox(width: 5),
+                    // TOMBOL TOGGLE MODE ADMIN
+                    IconButton(
+                      icon: Icon(
+                        _isFreeMode ? Icons.lock_open : Icons.lock,
+                        color: _isFreeMode ? Colors.green : accentGrey, 
+                        size: 30
+                      ),
+                      onPressed: _showAdminToggleDialog,
+                    ),
+                  ],
                 ),
               ),
+
               Positioned(
                 top: 40,
                 right: 20,
@@ -306,7 +398,8 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                 letterSpacing: 2)),
         const SizedBox(height: 60),
         ElevatedButton(
-          onPressed: _showVoucherDialog,
+          // --- CEK JIKA MODE ADMIN AKTIF ATAU TIDAK ---
+          onPressed: _isFreeMode ? _startFreeMode : _showVoucherDialog,
           style: ElevatedButton.styleFrom(
               padding: const EdgeInsets.symmetric(horizontal: 60, vertical: 20),
               textStyle:
@@ -345,7 +438,8 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                       letterSpacing: 3)),
               const SizedBox(height: 80),
               ElevatedButton(
-                onPressed: _showVoucherDialog,
+                // --- CEK JIKA MODE ADMIN AKTIF ATAU TIDAK ---
+                onPressed: _isFreeMode ? _startFreeMode : _showVoucherDialog,
                 style: ElevatedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(
                         horizontal: 70, vertical: 25),

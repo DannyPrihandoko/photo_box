@@ -8,7 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:image_gallery_saver_plus/image_gallery_saver_plus.dart';
 
 import 'package:photo_box/main.dart';
-import 'package:photo_box/printing_services.dart'; // Pastikan ini menggunakan code update PrintingServices sebelumnya
+import 'package:photo_box/printing_services.dart';
 
 // Enum Layout
 enum PhotostripLayout { strip2, strip1 }
@@ -30,7 +30,6 @@ class PhotostripCreatorScreen extends StatefulWidget {
   final String sessionId;
   final String voucherCode;
 
-  // TAMBAHAN: Parameter Mode Struk/Normal
   final bool isStrukMode;
 
   const PhotostripCreatorScreen({
@@ -38,7 +37,7 @@ class PhotostripCreatorScreen extends StatefulWidget {
     required this.sessionImages,
     required this.sessionId,
     required this.voucherCode,
-    this.isStrukMode = false, // Default false (Normal Foto)
+    this.isStrukMode = false,
   });
 
   @override
@@ -59,28 +58,8 @@ class _PhotostripCreatorScreenState extends State<PhotostripCreatorScreen> {
   int _selectedFrameIndex = 0;
   List<File> _customFrames = [];
 
-  static const List<double> _greyscaleMatrix = [
-    0.2126,
-    0.7152,
-    0.0722,
-    0,
-    0,
-    0.2126,
-    0.7152,
-    0.0722,
-    0,
-    0,
-    0.2126,
-    0.7152,
-    0.0722,
-    0,
-    0,
-    0,
-    0,
-    0,
-    1,
-    0,
-  ];
+  // TAMBAHAN: State untuk menandai slot mana yang sedang aktif di-edit posisinya
+  int _activeSlotIndex = 0;
 
   @override
   void initState() {
@@ -114,13 +93,24 @@ class _PhotostripCreatorScreenState extends State<PhotostripCreatorScreen> {
   void _updateLayout(PhotostripLayout layout) {
     setState(() {
       _selectedLayout = layout;
-      if (layout == PhotostripLayout.strip1 &&
-          _currentLayoutItems[0].imagePath == null) {
-        if (widget.sessionImages.isNotEmpty) {
-          _currentLayoutItems[0].imagePath = widget.sessionImages[0].path;
+      if (layout == PhotostripLayout.strip1) {
+        _activeSlotIndex = 0; // Kembalikan fokus ke slot 1
+        if (_currentLayoutItems[0].imagePath == null) {
+          if (widget.sessionImages.isNotEmpty) {
+            _currentLayoutItems[0].imagePath = widget.sessionImages[0].path;
+          }
         }
       }
     });
+  }
+
+  // --- FUNGSI MENGGESER GAMBAR VIA TOMBOL ---
+  void _shiftImage(double dx, double dy) {
+    if (_currentLayoutItems[_activeSlotIndex].imagePath != null) {
+      setState(() {
+        _currentLayoutItems[_activeSlotIndex].alignment += Alignment(dx, dy);
+      });
+    }
   }
 
   String _getIndonesianDate() {
@@ -203,7 +193,6 @@ class _PhotostripCreatorScreenState extends State<PhotostripCreatorScreen> {
       if (_repaintBoundaryKey.currentContext == null)
         throw Exception("Context null");
 
-      // 1. Capture Widget jadi Gambar
       RenderRepaintBoundary boundary = _repaintBoundaryKey.currentContext!
           .findRenderObject() as RenderRepaintBoundary;
 
@@ -215,7 +204,6 @@ class _PhotostripCreatorScreenState extends State<PhotostripCreatorScreen> {
       if (byteData == null) throw Exception("Gagal mengonversi gambar");
       final Uint8List pngBytes = byteData.buffer.asUint8List();
 
-      // 2. Simpan Lokal (File System)
       final Directory appDirectory = await getApplicationDocumentsDirectory();
       final String outputDirPath = '${appDirectory.path}/${widget.voucherCode}';
       await Directory(outputDirPath).create(recursive: true);
@@ -225,25 +213,22 @@ class _PhotostripCreatorScreenState extends State<PhotostripCreatorScreen> {
       final String outputPath = '$outputDirPath/$fileName';
       await File(outputPath).writeAsBytes(pngBytes);
 
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Menyimpan ke Galeri...')));
+      }
 
-      // 3. Simpan ke Galeri HP
       await ImageGallerySaverPlus.saveImage(pngBytes,
           quality: 100, name: "${widget.voucherCode}_photostrip");
 
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Menyiapkan printer Epson...')));
+      }
 
-      // 4. PRINT KE EPSON (UPDATE UTAMA DI SINI)
-      // Kita panggil fungsi baru yang mendukung mode Struk vs Normal
       await _printingServices.printBytesToEpson(pngBytes,
-          isStrukMode: widget.isStrukMode // Parameter dari halaman sebelumnya
-          );
+          isStrukMode: widget.isStrukMode);
 
-      // Setelah perintah print dikirim (dialog system print muncul), anggap sukses
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
             content: Text('Print Job Terkirim!'),
@@ -253,9 +238,10 @@ class _PhotostripCreatorScreenState extends State<PhotostripCreatorScreen> {
       }
     } catch (e) {
       debugPrint("Error: $e");
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text('Gagal: $e')));
+      }
     } finally {
       if (mounted)
         setState(() {
@@ -321,7 +307,6 @@ class _PhotostripCreatorScreenState extends State<PhotostripCreatorScreen> {
                       padding: const EdgeInsets.all(20),
                       child: FittedBox(
                           fit: BoxFit.scaleDown,
-                          // Tampilkan template
                           child: _buildPhotostripTemplate()),
                     ),
                   ),
@@ -335,92 +320,98 @@ class _PhotostripCreatorScreenState extends State<PhotostripCreatorScreen> {
                 flex: 3,
                 child: Padding(
                   padding: const EdgeInsets.all(20),
-                  child: Column(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        margin: const EdgeInsets.only(bottom: 10),
-                        decoration: BoxDecoration(
-                            color: Colors.blue.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                                color: Colors.blue.withOpacity(0.3))),
-                        child: const Row(
-                          children: [
-                            Icon(Icons.touch_app, size: 20, color: Colors.blue),
-                            SizedBox(width: 10),
-                            Expanded(
-                                child: Text(
-                                    "GESER FOTO di preview untuk atur posisi.\nTAHAN & DRAG untuk tukar posisi.",
-                                    style: TextStyle(
-                                        fontSize: 11, color: textDark))),
-                          ],
-                        ),
-                      ),
-
-                      const Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text("FOTO (Drag ke Preview)",
-                              style: TextStyle(
-                                  fontWeight: FontWeight.bold, fontSize: 12))),
-                      const SizedBox(height: 5),
-                      Expanded(child: _buildDraggableImageGrid()),
-                      const SizedBox(height: 15),
-
-                      // FRAME SELECTOR
-                      const Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text("PILIH FRAME",
-                              style:
-                                  TextStyle(color: accentGrey, fontSize: 12))),
-                      const SizedBox(height: 5),
-                      SizedBox(
-                        height: 60,
-                        child: ListView(
-                          scrollDirection: Axis.horizontal,
-                          children: [
-                            _buildFrameOption(0, "Polos", Colors.white),
-                            _buildFrameOption(1, "Cute", Colors.pink[100]!),
-                            _buildFrameOption(2, "Cool", Colors.grey[400]!),
-                            ...List.generate(
-                                _customFrames.length,
-                                (index) => _buildCustomFrameOption(
-                                    index + 3, _customFrames[index])),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 15),
-
-                      const Text("LAYOUT",
-                          style: TextStyle(color: accentGrey, fontSize: 12)),
-                      _buildLayoutOptions(),
-
-                      const SizedBox(height: 20),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 50,
-                        child: ElevatedButton.icon(
-                          icon: _isProcessing
-                              ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                      color: textDark, strokeWidth: 2))
-                              : const Icon(Icons.print),
-                          label: Text(_isProcessing
-                              ? 'MEMPROSES...'
-                              : 'CETAK & SIMPAN'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: primaryYellow,
-                            foregroundColor: textDark,
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12)),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          margin: const EdgeInsets.only(bottom: 10),
+                          decoration: BoxDecoration(
+                              color: Colors.blue.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                  color: Colors.blue.withOpacity(0.3))),
+                          child: const Row(
+                            children: [
+                              Icon(Icons.touch_app,
+                                  size: 20, color: Colors.blue),
+                              SizedBox(width: 10),
+                              Expanded(
+                                  child: Text(
+                                      "TAP gambar untuk memilih.\nGESER via tombol/layar untuk atur posisi.",
+                                      style: TextStyle(
+                                          fontSize: 11, color: textDark))),
+                            ],
                           ),
-                          onPressed:
-                              _isProcessing ? null : _saveAndPrintPhotostrip,
                         ),
-                      ),
-                    ],
+
+                        const Text("FOTO (Drag ke Preview)",
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold, fontSize: 12)),
+                        const SizedBox(height: 5),
+                        SizedBox(
+                            height:
+                                100, // Memberi tinggi statis agar grid tidak error
+                            child: _buildDraggableImageGrid()),
+                        const SizedBox(height: 15),
+
+                        const Text("PILIH FRAME",
+                            style: TextStyle(color: accentGrey, fontSize: 12)),
+                        const SizedBox(height: 5),
+                        SizedBox(
+                          height: 60,
+                          child: ListView(
+                            scrollDirection: Axis.horizontal,
+                            children: [
+                              _buildFrameOption(0, "Polos", Colors.white),
+                              _buildFrameOption(1, "Cute", Colors.pink[100]!),
+                              _buildFrameOption(2, "Cool", Colors.grey[400]!),
+                              ...List.generate(
+                                  _customFrames.length,
+                                  (index) => _buildCustomFrameOption(
+                                      index + 3, _customFrames[index])),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 15),
+
+                        const Text("LAYOUT",
+                            style: TextStyle(color: accentGrey, fontSize: 12)),
+                        _buildLayoutOptions(),
+
+                        const SizedBox(height: 15),
+
+                        // --- PANEL KONTROL POSISI (BARU) ---
+                        _buildPositionControls(),
+
+                        const SizedBox(height: 20),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 50,
+                          child: ElevatedButton.icon(
+                            icon: _isProcessing
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                        color: textDark, strokeWidth: 2))
+                                : const Icon(Icons.print),
+                            label: Text(_isProcessing
+                                ? 'MEMPROSES...'
+                                : 'CETAK & SIMPAN'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: primaryYellow,
+                              foregroundColor: textDark,
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12)),
+                            ),
+                            onPressed:
+                                _isProcessing ? null : _saveAndPrintPhotostrip,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -428,6 +419,88 @@ class _PhotostripCreatorScreenState extends State<PhotostripCreatorScreen> {
           );
         },
       ),
+    );
+  }
+
+  // --- WIDGET PANEL KONTROL POSISI ---
+  Widget _buildPositionControls() {
+    return Column(
+      children: [
+        const Align(
+          alignment: Alignment.centerLeft,
+          child: Text("KONTROL POSISI GAMBAR",
+              style: TextStyle(color: accentGrey, fontSize: 12)),
+        ),
+        const SizedBox(height: 5),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // D-PAD
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.white.withOpacity(0.1)),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              child: Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.arrow_back_ios_rounded,
+                        color: Colors.white, size: 20),
+                    onPressed: () => _shiftImage(-0.2, 0),
+                  ),
+                  Column(
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.keyboard_arrow_up_rounded,
+                            color: Colors.white, size: 28),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                        onPressed: () => _shiftImage(0, -0.2),
+                      ),
+                      const SizedBox(height: 15),
+                      IconButton(
+                        icon: const Icon(Icons.keyboard_arrow_down_rounded,
+                            color: Colors.white, size: 28),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                        onPressed: () => _shiftImage(0, 0.2),
+                      ),
+                    ],
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.arrow_forward_ios_rounded,
+                        color: Colors.white, size: 20),
+                    onPressed: () => _shiftImage(0.2, 0),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 15),
+            // Tombol Reset
+            ElevatedButton.icon(
+              onPressed: () {
+                if (_currentLayoutItems[_activeSlotIndex].imagePath != null) {
+                  setState(() {
+                    _currentLayoutItems[_activeSlotIndex].alignment =
+                        Alignment.center;
+                  });
+                }
+              },
+              icon: const Icon(Icons.refresh, size: 16),
+              label: const Text("Reset", style: TextStyle(fontSize: 12)),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blueGrey,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10)),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 15)),
+            )
+          ],
+        ),
+      ],
     );
   }
 
@@ -477,15 +550,8 @@ class _PhotostripCreatorScreenState extends State<PhotostripCreatorScreen> {
     return RepaintBoundary(
       key: _repaintBoundaryKey,
       child: ColorFiltered(
-        // KITA BISA MATIKAN GRAYSCALE JIKA MODE FOTO NORMAL, TAPI USER SEBELUMNYA MINTA EPSON AGAR BISA WARNA
-        // Jadi kita hapus ColorFiltered ini jika ingin warna, atau biarkan jika ingin efek retro.
-        // Di sini saya biarkan grayscale karena konsep "Photostrip" biasanya BW/Retro,
-        // Tapi jika Epson digunakan, user mungkin berharap warna.
-        // Mari kita buat dinamis:
-        colorFilter: const ColorFilter.mode(Colors.transparent,
-            BlendMode.multiply // Trik agar tidak ada filter (transparent)
-            ),
-        // JIKA INGIN BW: gunakan matrix _greyscaleMatrix
+        colorFilter:
+            const ColorFilter.mode(Colors.transparent, BlendMode.multiply),
         child: Container(
           width: 200,
           decoration: BoxDecoration(
@@ -539,6 +605,7 @@ class _PhotostripCreatorScreenState extends State<PhotostripCreatorScreen> {
           2,
           (i) =>
               _buildDragTargetWrapper(i, _currentLayoutItems[i], height: 140)));
+
   Widget _build1StripSlot() =>
       _buildDragTargetWrapper(0, _currentLayoutItems[0], height: 300);
 
@@ -552,8 +619,9 @@ class _PhotostripCreatorScreenState extends State<PhotostripCreatorScreen> {
           final data = details.data;
           if (data is String) {
             for (var i = 0; i < _currentLayoutItems.length; i++) {
-              if (_currentLayoutItems[i].imagePath == data)
+              if (_currentLayoutItems[i].imagePath == data) {
                 _currentLayoutItems[i].imagePath = null;
+              }
             }
             _currentLayoutItems[index].imagePath = data;
             _currentLayoutItems[index].alignment = Alignment.center;
@@ -574,45 +642,59 @@ class _PhotostripCreatorScreenState extends State<PhotostripCreatorScreen> {
 
   Widget _buildSlotContent(int index, PhotostripItem item,
       {bool isHighlighted = false, required double height}) {
-    return Container(
-      height: height,
-      width: 200,
-      margin: const EdgeInsets.only(bottom: 8),
-      decoration: BoxDecoration(
-          color: Colors.grey[300],
-          border: Border.all(
-              color: isHighlighted ? primaryYellow : Colors.transparent,
-              width: 3)),
-      child: item.imagePath != null
-          ? LongPressDraggable<DragData>(
-              data: DragData(item: item, fromIndex: index),
-              delay: const Duration(milliseconds: 300),
-              feedback: Material(
-                  color: Colors.transparent,
-                  child: Opacity(
-                      opacity: 0.7,
+    // Menandai apakah slot ini yang sedang aktif untuk diatur posisinya
+    bool isActive = _activeSlotIndex == index;
+
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _activeSlotIndex = index; // Jadikan slot ini aktif saat ditap
+        });
+      },
+      child: Container(
+        height: height,
+        width: 200,
+        margin: const EdgeInsets.only(bottom: 8),
+        decoration: BoxDecoration(
+            color: Colors.grey[300],
+            border: Border.all(
+                // Warna Biru menandakan Slot Aktif
+                color: isHighlighted
+                    ? primaryYellow
+                    : (isActive ? Colors.blueAccent : Colors.transparent),
+                width: 3)),
+        child: item.imagePath != null
+            ? LongPressDraggable<DragData>(
+                data: DragData(item: item, fromIndex: index),
+                delay: const Duration(milliseconds: 300),
+                feedback: Material(
+                    color: Colors.transparent,
+                    child: Opacity(
+                        opacity: 0.7,
+                        child: Image.file(File(item.imagePath!),
+                            height: height, width: 200, fit: BoxFit.cover))),
+                childWhenDragging: Container(color: Colors.grey[200]),
+                child: GestureDetector(
+                  onPanUpdate: (details) {
+                    setState(() {
+                      // Geser manual via Drag layar
+                      double sensitivity = 2.5;
+                      item.alignment = item.alignment -
+                          Alignment((details.delta.dx / 200) * sensitivity,
+                              (details.delta.dy / height) * sensitivity);
+                    });
+                  },
+                  child: ClipRect(
                       child: Image.file(File(item.imagePath!),
-                          height: height, width: 200, fit: BoxFit.cover))),
-              childWhenDragging: Container(color: Colors.grey[200]),
-              child: GestureDetector(
-                onPanUpdate: (details) {
-                  setState(() {
-                    double sensitivity = 2.5;
-                    item.alignment = item.alignment -
-                        Alignment((details.delta.dx / 200) * sensitivity,
-                            (details.delta.dy / height) * sensitivity);
-                  });
-                },
-                child: ClipRect(
-                    child: Image.file(File(item.imagePath!),
-                        fit: BoxFit.cover,
-                        alignment: item.alignment,
-                        width: 200,
-                        height: height)),
-              ),
-            )
-          : const Center(
-              child: Icon(Icons.add_a_photo, color: Colors.grey, size: 30)),
+                          fit: BoxFit.cover,
+                          alignment: item.alignment,
+                          width: 200,
+                          height: height)),
+                ),
+              )
+            : const Center(
+                child: Icon(Icons.add_a_photo, color: Colors.grey, size: 30)),
+      ),
     );
   }
 
