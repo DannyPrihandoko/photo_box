@@ -6,6 +6,7 @@ import 'package:image/image.dart' as img;
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:path_provider/path_provider.dart';
 
 // --- IMPORT KHUSUS EPSON (PDF & PRINTING) ---
 import 'package:pdf/pdf.dart';
@@ -60,7 +61,6 @@ class PrinterServices {
     await PrintBluetoothThermal.writeBytes(bytes);
   }
 
-  // --- LOGIKA PRINT GAMBAR THERMAL (HITAM PUTIH) ---
   Future<bool> printImageFromFile(File file) async {
     if (!await isConnected) {
       bool reconnected = await autoConnect();
@@ -186,7 +186,6 @@ class PrinterServices {
     }
   }
 
-  // --- INI FUNGSI YANG SEBELUMNYA HILANG ---
   void _distributeError(img.Image image, int x, int y, double error) {
     if (x >= 0 && x < image.width && y >= 0 && y < image.height) {
       img.Pixel p = image.getPixel(x, y);
@@ -196,17 +195,14 @@ class PrinterServices {
   }
 
   // ==========================================
-  // BAGIAN 2: PRINTER EPSON (USB / OTG)
+  // BAGIAN 2: PRINTER EPSON (USB / OTG) UNTUK FOTO/STRUK
   // ==========================================
 
-  /// Entry point utama untuk mencetak ke Epson.
-  /// [isStrukMode] = true (Tampilan Struk/Strip), false (Tampilan Foto Penuh)
   Future<void> printBytesToEpson(Uint8List imageBytes,
       {bool isStrukMode = false}) async {
     await _printPdfLayout(imageBytes, isStrukMode);
   }
 
-  /// Logika pembuatan layout PDF
   Future<void> _printPdfLayout(Uint8List imageBytes, bool isStrukMode) async {
     final pdfImage = pw.MemoryImage(imageBytes);
     final doc = pw.Document();
@@ -268,60 +264,116 @@ class PrinterServices {
   }
 
   // ==========================================
-  // BAGIAN 3: LAYOUT FLIPBOOK (BARU)
+  // BAGIAN 3: LAYOUT FLIPBOOK (MENYIMPAN & MENCETAK)
   // ==========================================
 
-  /// Layout Flipbook: Menyusun 24 frame gambar menjadi grid (misal 4x6) di kertas A4
-  Future<void> printFlipbookLayout(List<File> frames) async {
+  /// Membuat Layout Flipbook dan MENYIMPANNYA ke Storage (Tidak langsung print)
+  Future<File> saveFlipbookPdf(
+      List<File> frames, int frameIndex, String voucherCode) async {
     final doc = pw.Document();
 
-    // Konversi File gambar menjadi format yang bisa dibaca PDF
     List<pw.MemoryImage> pdfImages = [];
     for (var frame in frames) {
       final bytes = await frame.readAsBytes();
       pdfImages.add(pw.MemoryImage(bytes));
     }
 
+    List<pw.Widget> gridItems = [];
+
+    // 1. Cover
+    gridItems.add(pw.Container(
+        width: 130,
+        height: 95,
+        decoration: pw.BoxDecoration(
+          border: pw.Border.all(
+              color: PdfColors.black, width: 1, style: pw.BorderStyle.dashed),
+          color: PdfColors.amber300,
+        ),
+        child: pw.Center(
+            child: pw.Column(
+                mainAxisAlignment: pw.MainAxisAlignment.center,
+                children: [
+              pw.Text("PHOTOBOX",
+                  style: pw.TextStyle(
+                      fontWeight: pw.FontWeight.bold, fontSize: 10)),
+              pw.Text("FLIPBOOK",
+                  style: pw.TextStyle(
+                      fontWeight: pw.FontWeight.bold, fontSize: 18)),
+              pw.SizedBox(height: 5),
+              pw.Text("Voucher: $voucherCode",
+                  style: const pw.TextStyle(fontSize: 8)),
+              pw.Text(
+                  "Date: ${DateTime.now().day}/${DateTime.now().month}/${DateTime.now().year}",
+                  style: const pw.TextStyle(fontSize: 8)),
+            ]))));
+
+    // 2. Frames
+    for (int i = 0; i < pdfImages.length; i++) {
+      gridItems.add(pw.Container(
+          width: 130,
+          height: 95,
+          // --- PENAMBAHAN MARGIN/SPASI GAMBAR KE BORDER ---
+          padding: const pw.EdgeInsets.all(6),
+          decoration: pw.BoxDecoration(
+            border: pw.Border.all(
+                color: PdfColors.black, width: 1, style: pw.BorderStyle.dashed),
+          ),
+          child: pw.Stack(fit: pw.StackFit.expand, children: [
+            pw.Image(pdfImages[i], fit: pw.BoxFit.cover),
+            if (frameIndex == 1)
+              pw.Container(
+                  decoration: pw.BoxDecoration(
+                      border: pw.Border.all(
+                          color: PdfColors.pinkAccent, width: 3))),
+            if (frameIndex == 2)
+              pw.Container(
+                  decoration: pw.BoxDecoration(
+                      border: pw.Border.all(color: PdfColors.black, width: 4))),
+            pw.Positioned(
+                bottom: 2,
+                right: 4,
+                child: pw.Text("${i + 1}",
+                    style: pw.TextStyle(
+                        fontSize: 8,
+                        color: PdfColors.white,
+                        background:
+                            const pw.BoxDecoration(color: PdfColors.black))))
+          ])));
+    }
+
+    // 3. Susun ke PDF
     doc.addPage(
       pw.Page(
         pageFormat: PdfPageFormat.a4,
-        margin: const pw.EdgeInsets.all(20),
-        build: (pw.Context context) {
-          return pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.center,
-            children: [
-              pw.Text("FLIPBOOK 24 FRAMES",
-                  style: pw.TextStyle(
-                      fontSize: 20, fontWeight: pw.FontWeight.bold)),
-              pw.SizedBox(height: 10),
-              pw.Wrap(
-                spacing: 10, // Jarak horizontal antar frame
-                runSpacing: 10, // Jarak vertikal antar baris
-                alignment: pw.WrapAlignment.center,
-                children: pdfImages.map((img) {
-                  return pw.Container(
-                    width:
-                        120, // Sesuaikan ukuran frame agar 4 kolom muat di A4
-                    height: 90,
-                    decoration: pw.BoxDecoration(
-                      border: pw.Border.all(
-                          color: PdfColors.black,
-                          width: 0.5), // Garis bantu potong
-                    ),
-                    child: pw.Image(img, fit: pw.BoxFit.cover),
-                  );
-                }).toList(),
-              ),
-            ],
-          );
-        },
+        margin: const pw.EdgeInsets.all(15),
+        build: (pw.Context context) => pw.Wrap(
+            spacing: 5,
+            runSpacing: 5,
+            alignment: pw.WrapAlignment.center,
+            children: gridItems),
       ),
     );
 
-    // Buka dialog print
+    // SIMPAN KE PENYIMPANAN LOKAL
+    final bytes = await doc.save();
+    final Directory appDirectory = await getApplicationDocumentsDirectory();
+    final String outputDirPath = '${appDirectory.path}/Flipbooks';
+    await Directory(outputDirPath).create(recursive: true);
+
+    final String fileName =
+        'Flipbook_${voucherCode}_${DateTime.now().millisecondsSinceEpoch}.pdf';
+    final File file = File('$outputDirPath/$fileName');
+    await file.writeAsBytes(bytes);
+
+    return file;
+  }
+
+  /// Mengeksekusi Print ke printer Epson berdasarkan file PDF yang sudah tersimpan
+  Future<void> printPdfFile(File pdfFile) async {
+    final bytes = await pdfFile.readAsBytes();
     await Printing.layoutPdf(
-      onLayout: (PdfPageFormat format) async => doc.save(),
-      name: 'Flipbook_${DateTime.now().millisecondsSinceEpoch}',
+      onLayout: (PdfPageFormat format) async => bytes,
+      name: pdfFile.path.split('/').last,
     );
   }
 }

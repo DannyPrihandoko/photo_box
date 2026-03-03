@@ -6,16 +6,16 @@ import 'package:photo_box/main.dart'; // Import untuk warna
 import 'package:photo_box/preview_screen.dart';
 import 'package:photo_box/photostrip_creator_screen.dart';
 import 'package:image_gallery_saver_plus/image_gallery_saver_plus.dart';
-import 'package:photo_box/printing_services.dart';
 import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart'; // Menggunakan package baharu
 import 'package:path_provider/path_provider.dart';
+import 'package:photo_box/flipbook_creator_screen.dart'; // Import layar Flipbook Creator
 
 class HomeScreen extends StatefulWidget {
   final CameraDescription camera;
   final int totalTakes;
   final String sessionId;
   final String voucherCode;
-  final bool isFlipbookMode; // PARAMETER BARU
+  final bool isFlipbookMode;
 
   const HomeScreen({
     super.key,
@@ -23,7 +23,7 @@ class HomeScreen extends StatefulWidget {
     required this.totalTakes,
     required this.sessionId,
     required this.voucherCode,
-    this.isFlipbookMode = false, // Secara default false
+    this.isFlipbookMode = false,
   });
 
   @override
@@ -49,7 +49,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    _isRecordingFlipbook = widget.isFlipbookMode; // Tentukan mod awal
+    _isRecordingFlipbook = widget.isFlipbookMode;
 
     _controller = CameraController(widget.camera, ResolutionPreset.high,
         imageFormatGroup: ImageFormatGroup.yuv420);
@@ -72,7 +72,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _startCountdown() {
     setState(() {
-      // Ubah mesej bergantung pada mod
       _message = widget.isFlipbookMode ? "SIAP REKAM!" : "SENYUM!";
       _countdown = 3;
     });
@@ -85,7 +84,6 @@ class _HomeScreenState extends State<HomeScreen> {
         });
       } else {
         timer.cancel();
-        // Cek mod yang sedang berjalan dan laksanakan aksi yang sesuai
         if (widget.isFlipbookMode) {
           _startFlipbookRecording();
         } else {
@@ -96,7 +94,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   // ==========================================
-  // LOGIK FOTO NORMAL
+  // LOGIKA FOTO NORMAL
   // ==========================================
   void _takePicture() async {
     try {
@@ -167,7 +165,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   // ==========================================
-  // LOGIK RAKAMAN FLIPBOOK AUTOMATIK
+  // LOGIKA PEREKAMAN FLIPBOOK AUTOMATIK
   // ==========================================
   void _startFlipbookRecording() async {
     try {
@@ -178,13 +176,13 @@ class _HomeScreenState extends State<HomeScreen> {
         _showGetReady = true;
       });
 
-      // Mula rakam video
+      // Mulai rekam video
       await _controller.startVideoRecording();
 
-      // Rakam selama 3 saat
+      // Rekam selama 3 detik
       await Future.delayed(const Duration(seconds: 3));
 
-      // Hentikan rakaman
+      // Hentikan rekaman
       final XFile videoFile = await _controller.stopVideoRecording();
 
       setState(() {
@@ -201,24 +199,19 @@ class _HomeScreenState extends State<HomeScreen> {
 
         setState(() {
           _message = "SELESAI!";
+          _showGetReady = false;
         });
 
-        // Terus cetak ke EPSON
-        final printerServices = PrinterServices();
-        await printerServices.printFlipbookLayout(finalFrames);
-
+        // Langsung navigasikan ke layar Flipbook Creator (bukan ngeprint di sini)
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-                content:
-                    Text("Berhasil membuat & mencetak 24 frame Flipbook!")),
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (context) => FlipbookCreatorScreen(
+                frames: finalFrames,
+                voucherCode: widget.voucherCode,
+              ),
+            ),
           );
-
-          // Kembali ke skrin utama selepas 2 saat
-          Future.delayed(const Duration(seconds: 2), () {
-            if (mounted)
-              Navigator.of(context).popUntil((route) => route.isFirst);
-          });
         }
       } else {
         setState(() {
@@ -275,7 +268,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       backgroundColor: backgroundDark,
-      // Floating Action Button dibuang kerana mod automatik
       body: FutureBuilder<void>(
         future: _initializeControllerFuture,
         builder: (context, snapshot) {
@@ -377,7 +369,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     children: [
                       Text(
                         widget.isFlipbookMode
-                            ? "MOD FLIPBOOK AKTIF"
+                            ? "MODE FLIPBOOK AKTIF"
                             : "FOTO $_currentTake / ${widget.totalTakes}",
                         textAlign: TextAlign.center,
                         style: const TextStyle(
@@ -389,7 +381,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       const SizedBox(height: 5),
                       if (!widget.isFlipbookMode)
                         Text(
-                          "Voucher: ${widget.voucherCode} | Baki Retake: ${_maxRetakes - _retakesUsed}",
+                          "Voucher: ${widget.voucherCode} | Sisa Retake: ${_maxRetakes - _retakesUsed}",
                           style:
                               const TextStyle(color: Colors.grey, fontSize: 12),
                         ),
