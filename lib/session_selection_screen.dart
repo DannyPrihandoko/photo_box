@@ -1,30 +1,31 @@
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:photo_box/home_screen.dart';
-import 'package:photo_box/main.dart'; // Import untuk warna tema
+import 'package:photo_box/main.dart';
 
 class SessionSelectionScreen extends StatelessWidget {
   final CameraDescription camera;
   final String voucherCode;
 
   const SessionSelectionScreen({
-    super.key, 
+    super.key,
     required this.camera,
-    required this.voucherCode, 
+    required this.voucherCode,
   });
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: backgroundDark, 
+      backgroundColor: backgroundDark,
       appBar: AppBar(
-        title: Text("Voucher: $voucherCode", style: const TextStyle(color: textDark)),
-        automaticallyImplyLeading: false, 
+        title: Text("Voucher: $voucherCode",
+            style: const TextStyle(color: textDark)),
+        automaticallyImplyLeading: false,
         centerTitle: true,
         backgroundColor: primaryYellow,
       ),
       body: Center(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(20.0),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -38,28 +39,43 @@ class SessionSelectionScreen extends StatelessWidget {
                   letterSpacing: 2,
                 ),
               ),
-              const SizedBox(height: 40),
+              const SizedBox(height: 30),
 
               // --- PILIHAN 1: 3 FOTO ---
               _buildSessionOption(
                 context,
-                label: "3 FOTO",
+                label: "3 FOTO STRIP",
                 description: "Pakej Kilat & Jimat",
                 icon: Icons.filter_3,
                 totalTakes: 3,
-                isFlipbook: false, // Normal Foto
+                isFlipbook: false,
+                isCalendar: false,
               ),
-              
-              const SizedBox(height: 20),
+
+              const SizedBox(height: 15),
 
               // --- PILIHAN 2: FLIPBOOK ---
               _buildSessionOption(
                 context,
-                label: "FLIPBOOK",
-                description: "Cetak 24 Frame Video (3 Saat)",
+                label: "FLIPBOOK ANIMASI",
+                description: "Cetak 24 Frame Video & Stiker WA",
                 icon: Icons.videocam,
                 totalTakes: 24,
-                isFlipbook: true, // Mod Flipbook
+                isFlipbook: true,
+                isCalendar: false,
+              ),
+
+              const SizedBox(height: 15),
+
+              // --- PILIHAN 3: KALENDER 2026 ---
+              _buildSessionOption(
+                context,
+                label: "KALENDER 2026",
+                description: "3 Foto + Kalender Lengkap Libur Nasional",
+                icon: Icons.calendar_month,
+                totalTakes: 3, // Ubah menjadi 3 foto
+                isFlipbook: false,
+                isCalendar: true,
               ),
             ],
           ),
@@ -75,6 +91,7 @@ class SessionSelectionScreen extends StatelessWidget {
     required IconData icon,
     required int totalTakes,
     required bool isFlipbook,
+    required bool isCalendar,
   }) {
     return Card(
       color: backgroundLight,
@@ -82,17 +99,15 @@ class SessionSelectionScreen extends StatelessWidget {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: InkWell(
         onTap: () {
-          final String sessionId = voucherCode;
-
-          // Navigasi ke HomeScreen dengan membawa parameter isFlipbookMode
           Navigator.of(context).push(
             MaterialPageRoute(
               builder: (context) => HomeScreen(
                 camera: camera,
                 totalTakes: totalTakes,
-                sessionId: sessionId,
+                sessionId: voucherCode,
                 voucherCode: voucherCode,
-                isFlipbookMode: isFlipbook, // Parameter untuk mod flipbook automatik
+                isFlipbookMode: isFlipbook,
+                isCalendarMode: isCalendar,
               ),
             ),
           );
@@ -120,7 +135,7 @@ class SessionSelectionScreen extends StatelessWidget {
                       label,
                       style: const TextStyle(
                         color: textDark,
-                        fontSize: 22,
+                        fontSize: 20,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -129,7 +144,7 @@ class SessionSelectionScreen extends StatelessWidget {
                       description,
                       style: const TextStyle(
                         color: accentGrey,
-                        fontSize: 14,
+                        fontSize: 12,
                       ),
                     ),
                   ],

@@ -376,4 +376,205 @@ class PrinterServices {
       name: pdfFile.path.split('/').last,
     );
   }
+
+  // ==========================================
+  // BAGIAN 4: LAYOUT KALENDER 2026 (BARU)
+  // ==========================================
+
+  /// Membuat PDF Kalender 2026 lengkap dengan 3 foto dan hari libur
+  Future<File> saveCalendarPdf(List<File> photos, String voucherCode) async {
+    final doc = pw.Document();
+    List<pw.MemoryImage> pdfImages = [];
+
+    for (var photo in photos) {
+      final bytes = await photo.readAsBytes();
+      pdfImages.add(pw.MemoryImage(bytes));
+    }
+
+    // Data Hari Libur Nasional 2026 (Perkiraan resmi Indonesia)
+    final Map<int, List<int>> holidays2026 = {
+      1: [1], // 1 Jan: Tahun Baru Masehi
+      2: [18], // 18 Feb: Isra Mikraj
+      3: [3, 20, 21], // 3 Mar: Nyepi, 20-21 Mar: Idul Fitri
+      4: [3], // 3 Apr: Wafat Isa Almasih
+      5: [1, 14, 27], // 1 Mei: Buruh, 14 Mei: Kenaikan, 27 Mei: Idul Adha
+      6: [1, 16], // 1 Jun: Lahir Pancasila, 16 Jun: Tahun Baru Islam
+      8: [17, 25], // 17 Agu: HUT RI, 25 Agu: Maulid Nabi
+      12: [25], // 25 Des: Natal
+    };
+
+    final List<String> monthNames = [
+      "Januari",
+      "Februari",
+      "Maret",
+      "April",
+      "Mei",
+      "Juni",
+      "Juli",
+      "Agustus",
+      "September",
+      "Oktober",
+      "November",
+      "Desember"
+    ];
+
+    // Fungsi helper untuk membangun grid per bulan
+    pw.Widget buildMonthCalendar(int month) {
+      final daysInMonth = DateTime(2026, month + 1, 0).day;
+      final startWeekday =
+          DateTime(2026, month, 1).weekday; // 1 = Senin, 7 = Minggu
+
+      List<pw.Widget> daysGrid = [];
+
+      // Header Hari (Sen - Min)
+      final List<String> dayHeaders = ["S", "S", "R", "K", "J", "S", "M"];
+      for (int i = 0; i < 7; i++) {
+        daysGrid.add(pw.Center(
+            child: pw.Text(dayHeaders[i],
+                style: pw.TextStyle(
+                    fontSize: 7,
+                    fontWeight: pw.FontWeight.bold,
+                    color: i == 6 ? PdfColors.red : PdfColors.black))));
+      }
+
+      // Slot kosong sebelum tanggal 1
+      for (int i = 1; i < startWeekday; i++) {
+        daysGrid.add(pw.Container());
+      }
+
+      // Isi tanggal
+      for (int day = 1; day <= daysInMonth; day++) {
+        int currentWeekday = DateTime(2026, month, day).weekday;
+        bool isSunday = currentWeekday == 7;
+        bool isHoliday = holidays2026[month]?.contains(day) ?? false;
+
+        daysGrid.add(pw.Center(
+          child: pw.Text(
+            day.toString(),
+            style: pw.TextStyle(
+              fontSize: 8,
+              fontWeight: isHoliday ? pw.FontWeight.bold : pw.FontWeight.normal,
+              color: (isSunday || isHoliday) ? PdfColors.red : PdfColors.black,
+            ),
+          ),
+        ));
+      }
+
+      return pw.Container(
+          width: 120, // Lebar kotak bulan
+          padding: const pw.EdgeInsets.all(5),
+          decoration: pw.BoxDecoration(
+            border: pw.Border.all(color: PdfColors.grey300, width: 1),
+            borderRadius: const pw.BorderRadius.all(pw.Radius.circular(5)),
+          ),
+          child: pw.Column(children: [
+            pw.Text(monthNames[month - 1],
+                style:
+                    pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold)),
+            pw.SizedBox(height: 5),
+            pw.GridView(
+              crossAxisCount: 7,
+              childAspectRatio: 1.2,
+              children: daysGrid,
+            ),
+          ]));
+    }
+
+    doc.addPage(
+      pw.Page(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(20),
+        build: (pw.Context context) {
+          return pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.center,
+            children: [
+              // 1. HEADER
+              pw.Text("KALENDER 2026",
+                  style: pw.TextStyle(
+                      fontSize: 28,
+                      fontWeight: pw.FontWeight.bold,
+                      color: PdfColors.amber800)),
+              pw.SizedBox(height: 15),
+
+              // 2. TAMPILAN 3 FOTO (Disusun Berjejer Horizontal)
+              pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.center,
+                  children: pdfImages
+                      .map((img) => pw.Padding(
+                            padding:
+                                const pw.EdgeInsets.symmetric(horizontal: 5),
+                            child: pw.Container(
+                              height: 200,
+                              width:
+                                  140, // Sesuaikan lebar agar muat 3 foto di kertas A4
+                              decoration: pw.BoxDecoration(
+                                border: pw.Border.all(
+                                    color: PdfColors.black, width: 2),
+                                boxShadow: const [
+                                  pw.BoxShadow(
+                                      color: PdfColors.grey, blurRadius: 3)
+                                ],
+                              ),
+                              child: pw.Image(img, fit: pw.BoxFit.cover),
+                            ),
+                          ))
+                      .toList()),
+
+              pw.SizedBox(height: 25),
+
+              // 3. GRID 12 BULAN (4 Kolom x 3 Baris)
+              pw.Wrap(
+                spacing: 15,
+                runSpacing: 15,
+                alignment: pw.WrapAlignment.center,
+                children:
+                    List.generate(12, (index) => buildMonthCalendar(index + 1)),
+              ),
+
+              pw.Spacer(),
+
+              // 4. DAFTAR LIBUR NASIONAL
+              pw.Container(
+                  padding: const pw.EdgeInsets.all(10),
+                  decoration: pw.BoxDecoration(
+                      color: PdfColors.grey100,
+                      borderRadius:
+                          const pw.BorderRadius.all(pw.Radius.circular(5))),
+                  child: pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.center,
+                      children: [
+                        pw.Text("Keterangan Libur Nasional 2026:",
+                            style: pw.TextStyle(
+                                fontSize: 9, fontWeight: pw.FontWeight.bold)),
+                        pw.SizedBox(height: 5),
+                        pw.Text(
+                          "1 Jan: Thn Baru Masehi | 18 Feb: Isra Mikraj | 3 Mar: Nyepi | 20-21 Mar: Idul Fitri | 3 Apr: Wafat Isa Almasih\n1 Mei: Buruh | 14 Mei: Kenaikan Isa Almasih | 27 Mei: Idul Adha | 1 Jun: Pancasila | 16 Jun: Thn Baru Islam\n17 Agu: HUT RI | 25 Agu: Maulid Nabi | 25 Des: Natal",
+                          textAlign: pw.TextAlign.center,
+                          style: const pw.TextStyle(
+                              fontSize: 8, color: PdfColors.red700),
+                        ),
+                      ])),
+              pw.SizedBox(height: 5),
+              pw.Text("Photo Box Senyum! - Voucher: $voucherCode",
+                  style:
+                      const pw.TextStyle(fontSize: 8, color: PdfColors.grey)),
+            ],
+          );
+        },
+      ),
+    );
+
+    // SIMPAN FILE KE STORAGE
+    final bytes = await doc.save();
+    final Directory appDirectory = await getApplicationDocumentsDirectory();
+    final String outputDirPath = '${appDirectory.path}/Calendars';
+    await Directory(outputDirPath).create(recursive: true);
+
+    final String fileName =
+        'Calendar_${voucherCode}_${DateTime.now().millisecondsSinceEpoch}.pdf';
+    final File file = File('$outputDirPath/$fileName');
+    await file.writeAsBytes(bytes);
+
+    return file;
+  }
 }

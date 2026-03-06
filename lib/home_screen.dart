@@ -2,13 +2,14 @@ import 'dart:async';
 import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
-import 'package:photo_box/main.dart'; // Import untuk warna
+import 'package:photo_box/main.dart';
 import 'package:photo_box/preview_screen.dart';
 import 'package:photo_box/photostrip_creator_screen.dart';
+import 'package:photo_box/flipbook_creator_screen.dart';
+import 'package:photo_box/calendar_creator_screen.dart';
 import 'package:image_gallery_saver_plus/image_gallery_saver_plus.dart';
-import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart'; // Menggunakan package baharu
+import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:photo_box/flipbook_creator_screen.dart'; // Import layar Flipbook Creator
 
 class HomeScreen extends StatefulWidget {
   final CameraDescription camera;
@@ -16,6 +17,7 @@ class HomeScreen extends StatefulWidget {
   final String sessionId;
   final String voucherCode;
   final bool isFlipbookMode;
+  final bool isCalendarMode;
 
   const HomeScreen({
     super.key,
@@ -24,6 +26,7 @@ class HomeScreen extends StatefulWidget {
     required this.sessionId,
     required this.voucherCode,
     this.isFlipbookMode = false,
+    this.isCalendarMode = false,
   });
 
   @override
@@ -44,13 +47,9 @@ class _HomeScreenState extends State<HomeScreen> {
   Timer? _countdownTimer;
   bool _showGetReady = true;
 
-  bool _isRecordingFlipbook = false;
-
   @override
   void initState() {
     super.initState();
-    _isRecordingFlipbook = widget.isFlipbookMode;
-
     _controller = CameraController(widget.camera, ResolutionPreset.high,
         imageFormatGroup: ImageFormatGroup.yuv420);
     _initializeControllerFuture = _controller.initialize().then((_) {
@@ -93,9 +92,6 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  // ==========================================
-  // LOGIKA FOTO NORMAL
-  // ==========================================
   void _takePicture() async {
     try {
       await _initializeControllerFuture;
@@ -131,7 +127,6 @@ class _HomeScreenState extends State<HomeScreen> {
       } else {
         await ImageGallerySaverPlus.saveFile(image.path,
             name: "${widget.voucherCode}_raw_$_currentTake");
-
         _takenImages.add(image);
 
         if (_currentTake < widget.totalTakes) {
@@ -148,15 +143,30 @@ class _HomeScreenState extends State<HomeScreen> {
           });
         } else {
           if (!mounted) return;
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(
-              builder: (context) => PhotostripCreatorScreen(
-                sessionImages: _takenImages,
-                sessionId: widget.sessionId,
-                voucherCode: widget.voucherCode,
+
+          if (widget.isCalendarMode) {
+            // Ubah agar mengirim List<File>
+            List<File> imageFiles =
+                _takenImages.map((xfile) => File(xfile.path)).toList();
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(
+                builder: (context) => CalendarCreatorScreen(
+                  imageFiles: imageFiles,
+                  voucherCode: widget.voucherCode,
+                ),
               ),
-            ),
-          );
+            );
+          } else {
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(
+                builder: (context) => PhotostripCreatorScreen(
+                  sessionImages: _takenImages,
+                  sessionId: widget.sessionId,
+                  voucherCode: widget.voucherCode,
+                ),
+              ),
+            );
+          }
         }
       }
     } catch (e) {
@@ -164,45 +174,30 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  // ==========================================
-  // LOGIKA PEREKAMAN FLIPBOOK AUTOMATIK
-  // ==========================================
   void _startFlipbookRecording() async {
     try {
       await _initializeControllerFuture;
-
       setState(() {
         _message = "MEREKAM...";
         _showGetReady = true;
       });
 
-      // Mulai rekam video
       await _controller.startVideoRecording();
-
-      // Rekam selama 3 detik
       await Future.delayed(const Duration(seconds: 3));
-
-      // Hentikan rekaman
       final XFile videoFile = await _controller.stopVideoRecording();
 
-      setState(() {
-        _message = "MEMPROSES FLIPBOOK...";
-      });
+      setState(() => _message = "MEMPROSES FLIPBOOK...");
 
-      // Ekstrak frame menggunakan FFmpeg
       List<File> extractedFrames =
           await _extractFramesFromVideo(videoFile.path);
 
       if (extractedFrames.length >= 24) {
-        // Ambil 24 frame terbaik
         List<File> finalFrames = extractedFrames.take(24).toList();
-
         setState(() {
           _message = "SELESAI!";
           _showGetReady = false;
         });
 
-        // Langsung navigasikan ke layar Flipbook Creator (bukan ngeprint di sini)
         if (mounted) {
           Navigator.of(context).pushReplacement(
             MaterialPageRoute(
@@ -214,15 +209,11 @@ class _HomeScreenState extends State<HomeScreen> {
           );
         }
       } else {
-        setState(() {
-          _showGetReady = false;
-        });
+        setState(() => _showGetReady = false);
       }
     } catch (e) {
       debugPrint('Error recording flipbook video: $e');
-      setState(() {
-        _showGetReady = false;
-      });
+      setState(() => _showGetReady = false);
     }
   }
 
@@ -232,11 +223,8 @@ class _HomeScreenState extends State<HomeScreen> {
       final outDirPath =
           '${dir.path}/flipbook_frames_${DateTime.now().millisecondsSinceEpoch}';
       await Directory(outDirPath).create(recursive: true);
-
       final String outPattern = '$outDirPath/frame_%03d.jpg';
-      final String command = '-i "$videoPath" -frames:v 24 "$outPattern"';
-
-      await FFmpegKit.execute(command);
+      await FFmpegKit.execute('-i "$videoPath" -frames:v 24 "$outPattern"');
 
       final directory = Directory(outDirPath);
       List<File> frames = directory
@@ -244,12 +232,9 @@ class _HomeScreenState extends State<HomeScreen> {
           .whereType<File>()
           .where((file) => file.path.endsWith('.jpg'))
           .toList();
-
       frames.sort((a, b) => a.path.compareTo(b.path));
-
       return frames;
     } catch (e) {
-      debugPrint("Gagal mengekstrak frame: $e");
       return [];
     }
   }
@@ -275,16 +260,9 @@ class _HomeScreenState extends State<HomeScreen> {
               _controller.value.isInitialized) {
             final frameWidth =
                 isPortrait ? screenSize.width * 0.8 : screenSize.width * 0.5;
-
             final double cameraAspectRatio = _controller.value.aspectRatio;
-            final double visualAspectRatio;
-
-            if (isPortrait) {
-              visualAspectRatio = 1 / cameraAspectRatio;
-            } else {
-              visualAspectRatio = cameraAspectRatio;
-            }
-
+            final double visualAspectRatio =
+                isPortrait ? 1 / cameraAspectRatio : cameraAspectRatio;
             final frameHeight = frameWidth / visualAspectRatio;
 
             return Stack(
@@ -299,10 +277,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       borderRadius: BorderRadius.circular(isPortrait ? 30 : 40),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withAlpha(50),
-                          blurRadius: 15,
-                          spreadRadius: 2,
-                        ),
+                            color: Colors.black.withAlpha(50),
+                            blurRadius: 15,
+                            spreadRadius: 2)
                       ],
                     ),
                     padding: const EdgeInsets.all(10),
@@ -323,34 +300,29 @@ class _HomeScreenState extends State<HomeScreen> {
                                       mainAxisAlignment:
                                           MainAxisAlignment.center,
                                       children: [
-                                        Text(
-                                          _message,
-                                          textAlign: TextAlign.center,
-                                          style: TextStyle(
-                                            fontSize: isPortrait ? 36 : 48,
-                                            color: Colors.white,
-                                            fontWeight: FontWeight.bold,
-                                            shadows: const [
-                                              Shadow(
-                                                  blurRadius: 8,
-                                                  color: Colors.black54)
-                                            ],
-                                          ),
-                                        ),
-                                        if (!_showGetReady && _countdown > 0)
-                                          Text(
-                                            '$_countdown',
+                                        Text(_message,
+                                            textAlign: TextAlign.center,
                                             style: TextStyle(
-                                              fontSize: isPortrait ? 100 : 150,
-                                              color: Colors.amber,
-                                              fontWeight: FontWeight.bold,
-                                              shadows: const [
-                                                Shadow(
-                                                    blurRadius: 8,
-                                                    color: Colors.black54)
-                                              ],
-                                            ),
-                                          ),
+                                                fontSize: isPortrait ? 36 : 48,
+                                                color: Colors.white,
+                                                fontWeight: FontWeight.bold,
+                                                shadows: const [
+                                                  Shadow(
+                                                      blurRadius: 8,
+                                                      color: Colors.black54)
+                                                ])),
+                                        if (!_showGetReady && _countdown > 0)
+                                          Text('$_countdown',
+                                              style: TextStyle(
+                                                  fontSize:
+                                                      isPortrait ? 100 : 150,
+                                                  color: Colors.amber,
+                                                  fontWeight: FontWeight.bold,
+                                                  shadows: const [
+                                                    Shadow(
+                                                        blurRadius: 8,
+                                                        color: Colors.black54)
+                                                  ])),
                                       ],
                                     )
                                   : const SizedBox.shrink(),
@@ -370,7 +342,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       Text(
                         widget.isFlipbookMode
                             ? "MODE FLIPBOOK AKTIF"
-                            : "FOTO $_currentTake / ${widget.totalTakes}",
+                            : (widget.isCalendarMode
+                                ? "MODE KALENDER AKTIF | FOTO $_currentTake / ${widget.totalTakes}"
+                                : "FOTO $_currentTake / ${widget.totalTakes}"),
                         textAlign: TextAlign.center,
                         style: const TextStyle(
                             color: textDark,
@@ -381,10 +355,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       const SizedBox(height: 5),
                       if (!widget.isFlipbookMode)
                         Text(
-                          "Voucher: ${widget.voucherCode} | Sisa Retake: ${_maxRetakes - _retakesUsed}",
-                          style:
-                              const TextStyle(color: Colors.grey, fontSize: 12),
-                        ),
+                            "Voucher: ${widget.voucherCode} | Sisa Retake: ${_maxRetakes - _retakesUsed}",
+                            style: const TextStyle(
+                                color: Colors.grey, fontSize: 12)),
                     ],
                   ),
                 ),
